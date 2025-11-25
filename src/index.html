@@ -126,6 +126,7 @@
             border-radius: 34px;
             cursor: pointer;
             transition: all 0.3s ease;
+            overflow: none;
         }
 
         .switch-slider {
@@ -144,6 +145,7 @@
             opacity: 0;
             width: 0;
             height: 0;
+
         }
 
         .switch.active {
@@ -152,6 +154,12 @@
 
         .switch.active .switch-slider {
             transform: translateX(26px);
+        }
+
+        .switch-content {
+            white-space: nowrap;
+            color: white;
+            margin: 5px 2px;
         }
 
         /* Main SVG Area */
@@ -392,6 +400,36 @@
             color: black;
         }
 
+        #svgDisplay {
+            /* Prevent any browser scaling/filtering */
+            image-rendering: optimizeQuality;
+            shape-rendering: geometricPrecision;
+            text-rendering: geometricPrecision;
+            /* Ensure it fills available space without distortion */
+            max-width: 100%;
+            max-height: 100%;
+            /* Keep aspect ratio */
+            height: auto;
+            width: auto;
+        }
+
+        /* Ensure all SVG elements render as vectors */
+        #svgDisplay * {
+            shape-rendering: geometricPrecision;
+            text-rendering: geometricPrecision;
+            /* Remove any CSS transitions that might cause rasterization */
+            transition: none;
+        }
+
+        /* Text-specific optimizations */
+        #svgDisplay text,
+        #svgDisplay .cls-54,
+        #svgDisplay .cls-29 {
+            text-rendering: geometricPrecision;
+            shape-rendering: crispEdges;
+        }
+
+        /* Interactive elements - minimal styling */
         /* Wiring Diagram Specific Styles */
         #svgDisplay path,
         #svgDisplay line,
@@ -434,8 +472,9 @@
             pointer-events: stroke;
             cursor: pointer;
             stroke: #8c8786;
+            stroke-width: 4px;
             /* Temporary debugging */
-            /* stroke-opacity: 0.05 !important; */
+            stroke-opacity: 0.05 !important;
         }
 
         .selected-element {
@@ -501,7 +540,7 @@
             /* .app-logo {
                 font-size: 12px;
             } */
-             .bottom-controls {
+            .bottom-controls {
                 grid-template-columns: repeat(4, 1fr);
             }
         }
@@ -616,13 +655,14 @@
         </header>
         <!--  -->
         <div class="custom-bar header-right">
-            <div class="control-group-flex ">
+            <div class="control-group-flex">
                 <button class="btn" id="loadFileBtn">📁 Load</button>
                 <!-- <button class="btn" id="traceWireBtn">⚡ Trace</button> -->
                 <div class="switch" id="traceWireBtn">
                     <input type="checkbox">
                     <span class="switch-slider"></span>
                 </div>
+                <small class="switch-content">Trace</small>
                 <!-- <button class="btn" id="fabBtn">⚙️ Tools</button> -->
             </div>
         </div>
@@ -1259,14 +1299,14 @@
             }
 
             analyzeWiringDiagram() {
-                window.SVG_NS = "http://www.w3.org/2000/svg";
                 // Analyze the SVG to identify wires, components, and connections
                 this.wires = [];
                 this.components = [];
                 this.connections = [];
 
-                // Find wire elements (typically lines, paths, polylines)
-                this.$svgDisplay.find('line, path[d*="L"],path[d*="v"], path[d*="l"], path[d*="h"], path[d*="H"], polyline').each((index, element) => {
+                const SVG_NS = "http://www.w3.org/2000/svg";
+
+                this.$svgDisplay.find('line, path[d*="L"], path[d*="l"], path[d*="v"], path[d*="V"], path[d*="h"], path[d*="H"],  polyline').each((index, element) => {
                     const $orig = $(element);
                     const origEl = element;
                     const originalStroke = $orig.attr('stroke') || 'black';
@@ -1284,9 +1324,8 @@
                     const cloneHitbox = cloneOriginal.cloneNode(true);
                     // Make the hitbox invisible but still capture pointer events
                     cloneHitbox.setAttribute('stroke', originalStroke);
-                    cloneHitbox.setAttribute('stroke-opacity', '0');
-                    // invisible
-                    cloneHitbox.setAttribute('stroke-width', Math.max(5, originalStrokeWidth * 4).toString());
+                    cloneHitbox.setAttribute('stroke-opacity', '0');            // invisible
+                    // cloneHitbox.setAttribute('stroke-width', Math.max(originalStrokeWidth * 4).toString());
                     cloneHitbox.setAttribute('fill', 'none');
                     cloneHitbox.setAttribute('class', 'wire-hitbox');
                     cloneHitbox.setAttribute('data-original-wire-id', `wire_${index}`);
@@ -1310,12 +1349,14 @@
                     });
                 });
 
+
                 // Find component elements (typically circles, rects, polygons, groups)
-                this.$svgDisplay.find('circle, path[d*="c"], path[d*="C"], path[d*="s"], path[d*="S"], rect, polygon, ellipse, g').each((index, element) => {
+                this.$svgDisplay.find('circle, rect, polygon, ellipse, path[d*="c"], path[d*="C"], path[d*="s"], path[d*="S"], g').each((index, element) => {
                     const $element = $(element);
+
                     const bbox = element.getBBox ? element.getBBox() : { width: 0, height: 0 };
 
-                    // Heuristic: larger elements are likely components
+                    //larger elements are likely components
                     if (bbox.width > 10 || bbox.height > 10) {
                         this.components.push({
                             element: element,
@@ -1327,7 +1368,8 @@
                     }
                 });
 
-                this.showToast(`Found ${this.wires.length} wires and ${this.components.length} components`, 'success');
+                // this.showToast(`Found ${this.wires.length} wires and ${this.components.length} components`, 'success');
+                console.log(`found ${this.wires.length}wires and ${this.components.length} components`);
             }
 
             identifyComponentType($element) {
@@ -1523,7 +1565,7 @@
             traceWirePath(selectedWire) {
                 // this.clearAllHighlights(); - clear this so you can select more than 1 paths
                 this.showLoading(true);
-                
+
 
                 const elementType = selectedWire.$element[0].tagName.toLowerCase();
 
@@ -1556,38 +1598,72 @@
                 this.showLoading(false);
             }
 
+            // findConnectedWires(startWire) {
+            //     const connected = [];
+            //     const visited = new Set([startWire.id]);
+            //     const queue = [startWire];
+
+            //     while (queue.length > 0) {
+            //         const currentWire = queue.shift();
+            //         const endPoints = this.getWireEndPoints(currentWire.$element);
+
+            //         // Find other wires that connect to these endpoints
+            //         this.wires.forEach(wire => {
+            //             if (visited.has(wire.id)) return;
+
+            //             // **ADD FILTER: Only consider wires matching the tracing heuristic**
+            //             const element = wire.$element[0];
+            //             const isTraceable = element.tagName === 'line' ||
+            //                 element.tagName === 'polyline' ||
+            //                 (element.tagName === 'path' &&
+            //                     wire.$element.attr('d') &&
+            //                     /[L]/.test(wire.$element.attr('d')));
+
+            //             if (!isTraceable) return;
+
+            //             const wireEndPoints = this.getWireEndPoints(wire.$element);
+
+            //             // Check if any endpoints are close enough to be connected
+            //             for (let ep1 of endPoints) {
+            //                 for (let ep2 of wireEndPoints) {
+            //                     const distance = Math.sqrt(
+            //                         Math.pow(ep1.x - ep2.x, 2) + Math.pow(ep1.y - ep2.y, 2)
+            //                     );
+
+            //                     if (distance < 5) { // Connection threshold
+            //                         connected.push(wire);
+            //                         visited.add(wire.id);
+            //                         queue.push(wire);
+            //                         break;
+            //                     }
+            //                 }
+            //             }
+            //         });
+            //     }
+
+            //     return connected;
+            // }
+
             findConnectedWires(startWire) {
                 const connected = [];
-                const visited = new Set([startWire.id]);
-                const queue = [startWire];
+                const startPts = this.getWireEndPoints(startWire.$element);
+                const epsilon = 0.5; // tight tolerance
 
-                while (queue.length > 0) {
-                    const currentWire = queue.shift();
-                    const endPoints = this.getWireEndPoints(currentWire.$element);
-
-                    // Find other wires that connect to these endpoints
-                    this.wires.forEach(wire => {
-                        if (visited.has(wire.id)) return;
-
-                        const wireEndPoints = this.getWireEndPoints(wire.$element);
-
-                        // Check if any endpoints are close enough to be connected
-                        for (let ep1 of endPoints) {
-                            for (let ep2 of wireEndPoints) {
-                                const distance = Math.sqrt(
-                                    Math.pow(ep1.x - ep2.x, 2) + Math.pow(ep1.y - ep2.y, 2)
-                                );
-
-                                if (distance < 5) { // Connection threshold
-                                    connected.push(wire);
-                                    visited.add(wire.id);
-                                    queue.push(wire);
-                                    break;
-                                }
+                this.wires.forEach(wire => {
+                    if (wire.id === startWire.id) return;
+                    const pts = this.getWireEndPoints(wire.$element);
+                    for (let a of startPts) {
+                        for (let b of pts) {
+                            const dx = a.x - b.x, dy = a.y - b.y;
+                            if (Math.hypot(dx, dy) <= epsilon) {
+                                connected.push(wire);
+                                // break out to next wire
+                                a = startPts[startPts.length - 1]; // force outer break
+                                break;
                             }
                         }
-                    });
-                }
+                    }
+                });
 
                 return connected;
             }
@@ -1643,21 +1719,34 @@
             }
 
             showConnections() {
-                this.clearAllHighlights();
+                // this.clearAllHighlights();
+                // this.highlightComponents();
 
                 // Show all wire connections with different colors
                 const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#f9ca24', '#f0932b', '#eb4d4b'];
 
                 this.wires.forEach((wire, index) => {
                     const color = colors[index % colors.length];
-                    wire.$element.css({
-                        'stroke': color,
-                        // 'stroke-width': '4px',
-                        'filter': `drop-shadow(0 0 8px ${color})`
+
+                    // Check if the wire element is a path with specific commands
+                    const $element = wire.$element;
+                    const isSpecialPath = $element.is('path') &&
+                        $element.attr('d') &&
+                        /[lvVhH]/.test($element.attr('d'));
+
+                    $element.css({
+                        'stroke': isSpecialPath ? 'blue' : color,
+                        'stroke-width': '',
                     });
                 });
 
+                // Add radial gradient background to SVG
+                // this.$svgDisplay.css({
+                //     'background': 'rgba(5, 63, 43, 0.904)', //rgba(0, 0, 0, 0.7) - dark gray;
+                // });
+
                 this.showToast('Showing all wire connections', 'success');
+                console.log('Showing all wire connections', 'success');
             }
 
             clearAllHighlights() {
@@ -2035,7 +2124,7 @@
                 if (isMeasuring) {
                     measurePoints = [];
                     this.showToast('Measuring mode ON - Tap points to measure', 'success');
-                    
+
                     // Listen for clicks on SVG elements
                     this.$svgDisplay.on('click.measure', (e) => {
                         const rect = this.$svgDisplay[0].getBoundingClientRect();
@@ -2044,7 +2133,7 @@
                             y: e.clientY - rect.top
                         };
                         measurePoints.push(point);
-                        
+
                         if (measurePoints.length === 2) {
                             const distance = Math.sqrt(
                                 Math.pow(measurePoints[1].x - measurePoints[0].x, 2) +
