@@ -12,6 +12,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"></script>
+    <!-- Testing CDN -->
+    <link rel="stylesheet" href="../../tifany/dist/tifany.min.css">
+    <script src="../../tifany/dist/tifany.min.js"></script>
     <!-- Parent Header -->
     <link rel="stylesheet" href="../../../assets/css/portfolio.css">
     <script src="../../../assets/js/portfolio.js"></script>
@@ -93,7 +96,7 @@
             /* background: rgba(79, 172, 254, 0.2); */
             background: rgb(79 172 254 / 62%);
             border: 1px solid rgba(79, 172, 254, 0.4);
-            /* color: white; */
+            color: white;
             padding: 6px 12px;
             border-radius: 20px;
             font-size: 11px;
@@ -102,6 +105,12 @@
             backdrop-filter: blur(5px);
             margin-right: 5px;
             white-space: nowrap;
+        }
+
+        .slide-bar {
+            background: rgb(86 86 86 / 90%) !important;
+            padding: 2px;
+            /* width: 6%; */
         }
 
         .btn:hover,
@@ -199,18 +208,19 @@
             background: rgb(86 86 86 / 90%);
             backdrop-filter: blur(15px);
             padding: 10px;
-            display: none;
+            display: grid;
             grid-template-columns: repeat(auto-fit, minmax(40px, 1fr));
             gap: 8px;
             border-top: 1px solid rgba(255, 255, 255, 0.1);
-            max-height: 0;
+            /* max-height: 0; */
             overflow: hidden;
             transition: max-height 0.3s ease, padding 0.3s ease;
         }
 
         .bottom-controls.expanded {
-            display: grid;
-            max-height: 200px;
+            display: none;
+            /* max-height: 200px; */
+            max-height: auto;
             /* padding: 15px; */
         }
 
@@ -258,7 +268,7 @@
             transition: right 0.3s ease;
             z-index: 2000;
             overflow-y: auto;
-            padding: 60px 20px 20px;
+            /* padding: 6px 5px 5px; */
         }
 
         .side-panel.open {
@@ -277,6 +287,93 @@
             border-radius: 50%;
             cursor: pointer;
             font-size: 16px;
+        }
+
+        /* Side Panel Layers */
+        .layers-tree {
+            font-size: 11px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .layer-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 4px;
+            margin: 2px 0;
+            background: rgba(79, 172, 254, 0.1);
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border-left: 2px solid transparent;
+        }
+
+        .layer-item:hover {
+            background: rgba(79, 172, 254, 0.2);
+            border-left-color: #4facfe;
+        }
+
+        .layer-item.active {
+            background: rgba(79, 172, 254, 0.3);
+            border-left-color: #00f2fe;
+            color: #00f2fe;
+        }
+
+        .layer-toggle {
+            width: 20px;
+            height: 20px;
+            background: none;
+            border: none;
+            color: white;
+            cursor: pointer;
+            font-size: 12px;
+            padding: 0;
+        }
+
+        .layer-name {
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-size: 10px;
+        }
+
+        .layer-indent {
+            margin-left: 12px;
+        }
+
+        /* 3D perspective */
+        .svg-wrapper.perspective-3d {
+            perspective: var(--perspective-distance, 1500px);
+            transform-style: preserve-3d;
+        }
+
+        .svg-wrapper.perspective-3d #svgDisplay {
+            transform-style: preserve-3d;
+            transition: transform 0.1s ease-out;
+        }
+
+        /* Edit mode indicators */
+        .element-editing {
+            stroke: #00f2fe !important;
+            stroke-width: 2 !important;
+            filter: drop-shadow(0 0 6px #00f2fe) !important;
+        }
+
+        .edit-handle {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background: #4facfe;
+            border: 1px solid white;
+            border-radius: 50%;
+            cursor: move;
+            z-index: 2001;
+        }
+
+        .edit-handle.rotate {
+            cursor: crosshair;
+            background: #00f2fe;
         }
 
         .control-group {
@@ -512,6 +609,10 @@
             font-size: 12px;
         }
 
+        .switch.active .switch-slider {
+            transform: none;
+        }
+
         /* Responsive Design */
         @media (max-width: 768px) {
             .header {
@@ -519,14 +620,27 @@
                 min-height: 45px;
             }
 
+            .panel-content {
+                display: none;
+            }
+
             .btn {
-                padding: 4px 8px;
-                font-size: 10px;
+                padding: 0px 2px;
+                font-size: 20px;
+                background: none;
+                border: none;
             }
 
             .side-panel {
-                width: 75%;
+                width: 65%;
                 right: -100%;
+            }
+
+            .slide-bar {
+                background: rgb(86 86 86 / 90%) !important;
+                padding: 2px;
+                writing-mode: sideways-lr;
+                /* width: 6%; */
             }
 
             .fab {
@@ -541,7 +655,11 @@
                 font-size: 12px;
             } */
             .bottom-controls {
-                grid-template-columns: repeat(4, 1fr);
+                grid-template-columns: repeat(5, 1fr);
+            }
+
+            .control-group-flex {
+                width: 100%;
             }
         }
 
@@ -642,7 +760,7 @@
             <div class="header-content">
                 <div class="app-logo logo">
                     <h1><a href="../../../index.html#home">CANWORK<span class="logo-accent">STUDIOS</a></span></h1>
-                    <small>SVG Wiring Editor</small>
+                    <small class="">SVG Wiring Editor</small>
                 </div>
                 <nav class="nav">
                     <a href="../../../index.html#projects" class="nav-link">Projects</a>
@@ -655,32 +773,54 @@
         </header>
         <!--  -->
         <div class="custom-bar header-right">
-            <div class="control-group-flex">
-                <button class="btn" id="loadFileBtn">📁 Load</button>
-                <!-- <button class="btn" id="traceWireBtn">⚡ Trace</button> -->
-                <div class="switch" id="traceWireBtn">
+            <div class="header-right">
+                <small class="switch-content">Trace ⚡</small>
+                <div class="switch" id="traceWireBtn" data-visibility="trace-wire" title="Trace Wire ON/OFF">
                     <input type="checkbox">
                     <span class="switch-slider"></span>
                 </div>
-                <small class="switch-content">Trace</small>
-                <!-- <button class="btn" id="fabBtn">⚙️ Tools</button> -->
+                <div class="control-group-flex">
+
+                    <!-- <button class="btn" id="traceWireBtn">⚡ Trace</button> -->
+                    <button class="btn" data-visibility="load-files" title="Load File" id="loadFileBtn">📁
+                        <span class="panel-content">Load</span></button>
+                    <button class="btn" data-visibility="toolbar-settings" title="Toggle Toolbar"
+                        id="toggleControlsBtn">⚙️ <span class="panel-content">Toolbar</span></button>
+                </div>
             </div>
         </div>
         <div class="custom-bar">
-            <!-- <div class="header-right"> -->
-            <!-- <button class="accordion active"></button> -->
-            <h3 class="">Wiring <br> Tools</h3>
-            <div class="control-group-flex">
-                <button class="btn" id="highlightComponentsBtn">💡 Highlight Components</button>
-                <button class="btn" id="showConnectionsBtn">🔗 Show Connections</button>
-                <button class="btn" id="clearHighlightsBtn">🗑️ Clear All Highlights</button>
+
+            <button class="accordion active slide-bar">
+                <h3 class="">Wiring</h3>
+            </button>
+            <div class="panel control-group-flex">
+                <button class="btn" data-visibility="highlight-components" title="Highlight Components" id="highlightComponentsBtn">💡 <span class="panel-content">Highlight Components</span></button>
+                <button class="btn" data-visibility="show-connections" title="show connections" id="showConnectionsBtn">🔗 <span class="panel-content">Show
+                        Connections</span></button>
+                <button class="btn" data-visibility="clear" title="Clear All" id="clearHighlightsBtn">⌫ <span class="panel-content">Clear All</span></button>
             </div>
-            <!-- <button class="accordion active"></button> -->
-            <h3 class="">Display <br> Options</h3>
-            <div class="control-group-flex">
+            <button class="accordion slide-bar">
+                <h3 class="">Export</h3>
+            </button>
+
+            <div class="panel control-group-flex">
                 <!-- <button class="btn" id="toggleMiniMapBtn">🗺️ Toggle Mini Map</button> -->
                 <!-- <button class="btn" id="darkModeBtn">🌙 Dark Mode</button> -->
-                <button class="btn" id="exportViewBtn">📤 Export Current View</button>
+                <button class="btn" id="exportViewBtn">📤 <span class="panel-content">Export Current
+                        View</span></button>
+            </div>
+            <!-- <h3 class="">Edit <br> Tools</h3> -->
+            <!-- Edit Tools -->
+            <button class="accordion active slide-bar">
+                <h3 class="">Edit</h3>
+            </button>
+            <div class="panel control-group-flex">
+                <h3>✏️ COMING SOON</h3>
+                <!-- <button class="btn" id="moveSelectBtn">↕️ <span class="panel-content">Move</span></button>
+                <button class="btn" id="rotateSelectBtn">🔄 <span class="panel-content">Rotate</span></button>
+                <button class="btn" id="scaleSelectBtn">⬍ <span class="panel-content">Scale</span></button>
+                <button class="btn" id="resetEditBtn">↩️ <span class="panel-content">Reset Edits</span></button> -->
             </div>
             <!-- </div> -->
         </div>
@@ -762,7 +902,8 @@
             </div>
             <!-- <button class="btn" id="">🔄 Reset</button> -->
             <div class="control-btn" id="rotateBtn">
-                <div class="icon"><svg fill="#fff" width="21px" height="25px" viewBox="0 0 32 32" id="icon"
+                <div class="icon">
+                    <svg fill="#fff" width="21px" height="25px" viewBox="0 0 32 32" id="icon"
                         xmlns="http://www.w3.org/2000/svg" style="fill: rgb(255, 255, 255);" data-iconid="340936"
                         data-svgname="Rotate clockwise">
                         <defs>
@@ -772,7 +913,7 @@
                                 }
                             </style>
                         </defs>
-                        <title>rotate--clockwise</title>
+                        <title>rotate-right</title>
                         <path
                             d="M28,30H16a2.0023,2.0023,0,0,1-2-2V16a2.0023,2.0023,0,0,1,2-2H28a2.0023,2.0023,0,0,1,2,2V28A2.0023,2.0023,0,0,1,28,30ZM16,16V28H28.0012L28,16Z"
                             transform="translate(0)"></path>
@@ -781,35 +922,51 @@
                             transform="translate(0)"></path>
                         <rect id="_Transparent_Rectangle_" data-name="&lt;Transparent Rectangle&gt;" class="cls-1"
                             width="32" height="32"></rect>
-                    </svg></div>
-                <div>Rotate</div>
+                    </svg>
+                </div>
+                <div>Rotate Right</div>
+            </div>
+            <div class="control-btn" id="rotateLeftBtn">
+                <div class="icon">
+                    <svg fill="#000000" width="21px" height="25px" viewBox="0 0 56 56"
+                        xmlns="http://www.w3.org/2000/svg" data-iconid="437209" data-svgname="Rotate left">
+                        <title>rotate-left</title>
+                        <path
+                            d="M 37.3280 14.5587 C 38.7343 15.6134 40.1874 15.1915 40.1874 13.3399 L 40.1874 10.1290 L 40.2578 10.1290 C 45.3437 10.1290 48.5545 13.6446 48.5545 18.6603 C 48.5545 21.7774 47.5936 22.9493 47.5235 23.7930 C 47.5000 24.4493 47.7342 24.8477 48.2732 25.1056 C 49.0000 25.4571 49.8438 25.1290 50.2422 24.4493 C 50.9689 23.2071 51.4844 21.1446 51.4844 18.6368 C 51.4844 11.9337 47.0080 7.4103 40.2812 7.4103 L 40.1874 7.4103 L 40.1874 3.9649 C 40.1874 2.0665 38.7578 1.6444 37.3280 2.7227 L 30.9296 7.4103 C 29.8515 8.2071 29.8515 9.1212 30.9296 9.8946 Z M 10.5390 54.3556 L 33.7656 54.3556 C 37.7734 54.3556 39.7890 52.4337 39.7890 48.3321 L 39.7890 25.1524 C 39.7890 21.0508 37.7734 19.1290 33.7656 19.1290 L 10.5390 19.1290 C 6.5312 19.1290 4.5156 21.0508 4.5156 25.1524 L 4.5156 48.3321 C 4.5156 52.4337 6.5312 54.3556 10.5390 54.3556 Z M 10.6093 50.5821 C 9.0156 50.5821 8.2890 49.9259 8.2890 48.2618 L 8.2890 25.2227 C 8.2890 23.5587 9.0156 22.9024 10.6093 22.9024 L 33.6952 22.9024 C 35.3124 22.9024 36.0156 23.5587 36.0156 25.2227 L 36.0156 48.2618 C 36.0156 49.9259 35.3124 50.5821 33.6952 50.5821 Z"
+                            fill="#fff" style="fill: rgb(255, 255, 255);"></path>
+                    </svg>
+                </div>
+                <div>Rotate Left</div>
             </div>
             <div class="control-btn" id="transformBtn">
                 <div class="icon">▱▰</div>
                 <div>Transform</div>
             </div>
-            <div class="control-btn" id="layersBtn">
-                <div class="icon">📋</div>
-                <div>Layers</div>
-            </div>
             <div class="control-btn" id="measureBtn">
                 <div class="icon">📏</div>
                 <div>Measure</div>
             </div>
+            <div class="control-btn" id="layersBtn">
+                <div class="icon">📋</div>
+                <div>Layers</div>
+            </div>
         </div>
 
         <!-- Side Panel -->
-        <!-- <div class="side-panel" id="sidePanel">
+        <!-- Replace commented side-panel with: -->
+        <div class="side-panel" id="sidePanel">
             <button class="side-panel-close" id="closePanelBtn">×</button>
 
+            <!-- Layers Tab -->
             <div class="control-group">
-                <h3>File Management</h3>
-                <div class="file-input-wrapper">
-                    <input type="file" id="svgFileInput" accept=".svg,image/svg+xml">
-                    <label for="svgFileInput">Choose SVG File</label>
+                <h3>📋 Layers</h3>
+                <div id="layersPanel" class="layers-tree"
+                    style="max-height: 300px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 8px;">
+                    <!-- Dynamically generated -->
                 </div>
             </div>
 
+            <!-- 2D Transform -->
             <div class="control-group">
                 <h3>View Controls</h3>
                 <div class="slider-group">
@@ -819,38 +976,32 @@
                 </div>
                 <div class="slider-group">
                     <label>Rotation</label>
-                    <input type="range" id="rotationSlider" class="slider" min="0" max="360" step="1" value="0">
+                    <input type="range" id="rotationSlider" class="slider" min="-180" max="180" step="1" value="0">
                     <div class="value-display">Angle: <span id="rotationValue">0</span>°</div>
                 </div>
+                <!-- <h3>🎭 3D Transform</h3> -->
                 <div class="slider-group">
-                    <label>Pitch Perspective</label>
-                    <input type="range" id="pitchSlider" class="slider" min="-100" max="100" step="1" value="0">
+                    <label>Rotate X (Pitch)</label>
+                    <input type="range" id="pitchSlider" class="slider" min="-60" max="60" step="1" value="0">
                     <div class="value-display">Pitch: <span id="pitchValue">0</span>°</div>
                 </div>
-            </div>
 
-            <div class="control-group">
-                <h3>Wiring Tools</h3>
-                <button class="btn primary" id="traceWiresBtn" style="width: 100%; margin-bottom: 10px;">🔍 Trace Wire
-                    Path</button>
-                <button class="btn" id="highlightComponentsBtn" style="width: 100%; margin-bottom: 10px;">💡 Highlight
-                    Components</button>
-                <button class="btn" id="showConnectionsBtn" style="width: 100%; margin-bottom: 10px;">🔗 Show
-                    Connections</button>
-                <button class="btn" id="clearHighlightsBtn" style="width: 100%;">🗑️ Clear All Highlights</button>
+                <div class="slider-group">
+                    <label>Rotate Y (Yaw)</label>
+                    <input type="range" id="rotateYSlider" class="slider" min="0" max="90" step="1" value="0">
+                    <div class="value-display">Yaw: <span id="rotateYValue">0</span>°</div>
+                </div>
+                <div class="slider-group">
+                    <label>Perspective</label>
+                    <input type="range" id="perspectiveSlider" class="slider" min="500" max="3000" step="100"
+                        value="1500">
+                    <div class="value-display">Distance: <span id="perspectiveValue">1500</span>px</div>
+                </div>
             </div>
-
-            <div class="control-group">
-                <h3>Display Options</h3>
-                <button class="btn" id="toggleMiniMapBtn" style="width: 100%; margin-bottom: 10px;">🗺️ Toggle Mini
-                    Map</button>
-                <button class="btn" id="darkModeBtn" style="width: 100%; margin-bottom: 10px;">🌙 Dark Mode</button>
-                <button class="btn" id="exportViewBtn" style="width: 100%;">📤 Export Current View</button>
-            </div>
-        </div> -->
+        </div>
 
         <!-- Floating Action Button -->
-        <button class="fab" id="toggleControlsBtn">⚙️</button>
+        <!-- <button class="fab" id="fabBtn">⚙️</button> -->
 
         <!-- Toast Container -->
         <div class="toast" id="toast"></div>
@@ -866,6 +1017,7 @@
                     currentZoom: 1,
                     currentRotation: 0,
                     currentPitch: 0,
+                    currentYaw: 0,
                     // currentTranslate: {
                     //     x: 0,
                     //     y: 0
@@ -875,7 +1027,9 @@
                 this.currentRotation = this.initialState.currentRotation;
                 this.currentTranslate = { x: 0, y: 0 };
 
+                // 3D
                 this.currentPitch = this.initialState.currentPitch;
+                this.currentYaw = this.initialState.currentYaw;
                 this.dragStart = { x: 0, y: 0 };
 
                 this.selectedElements = [];
@@ -913,6 +1067,8 @@
                 this.$zoomSlider = $('#zoomSlider');
                 this.$rotationSlider = $('#rotationSlider');
                 this.$pitchSlider = $('#pitchSlider');
+                this.$rotateYSlider = $('#rotateYSlider');
+                this.$perspectiveSlider = $('#perspectiveSlider');
                 this.$selectionRectangle = $('#selectionRectangle');
                 this.$dimOverlay = $('#dimOverlay');
             }
@@ -1143,6 +1299,7 @@
                 $('#zoomOutBtn').on('click', () => this.zoomOut());
                 $('#fitViewBtn').on('click', () => this.fitToView());
                 $('#rotateBtn').on('click', () => this.rotateView());
+                $('#rotateLeftBtn').on('click', () => this.rotateViewLeft());
                 $('#layersBtn').on('click', () => this.showLayers());
                 $('#measureBtn').on('click', () => this.toggleMeasureTool());
 
@@ -1154,6 +1311,14 @@
                 // Sliders
                 $('#zoomSlider').on('input', (e) => this.setZoom(parseFloat(e.target.value)));
                 $('#rotationSlider').on('input', (e) => this.setRotation(parseFloat(e.target.value)));
+                $('#pitchSlider').on('input', (e) => this.setPitch(parseFloat(e.target.value)));
+                $('#rotateYSlider').on('input', (e) => this.setYRotation(parseFloat(e.target.value)));
+
+                $('#perspectiveSlider').on('input', (e) => {
+                    const val = parseFloat(e.target.value);
+                    $('#perspectiveValue').text(val);
+                    this.$svgWrapper.css('perspective', val + 'px');
+                });
 
                 // Wiring tools
                 $('#traceWiresBtn').on('click', () => this.startWireTracing());
@@ -1212,6 +1377,15 @@
                 }
                 );
 
+                $(document).on('click', (e) => {
+                    const $target = $(e.target);
+                    const isClickInPanel = $target.closest('#sidePanel').length > 0;
+                    const isClickOnButton = $target.closest('#layersBtn, #transformBtn, #closePanelBtn').length > 0;
+
+                    if (!isClickInPanel && !isClickOnButton && this.$sidePanel.hasClass('open')) {
+                        this.closeSidePanel();
+                    }
+                });
 
                 // Prevent context menu on long press
                 this.$svgContainer.on('contextmenu', (e) => e.preventDefault());
@@ -1962,30 +2136,55 @@
 
             setRotation(rotation) {
                 this.currentRotation = rotation % 360;
-                const sliderValue = this.scaleValue(this.currentRotation, 0, 360, 0, 100);
+                const sliderValue = this.scaleValue(this.currentRotation, 0, 180, 0, 180);
                 this.$rotationSlider.val(sliderValue);
                 $('#rotationValue').text(Math.round(this.currentRotation));
                 this.updateTransform();
             }
 
             setPitch(pitch) {
-                this.currentPitch = Math.max(0, Math.min(60, pitch));
-                const sliderValue = this.scaleValue(this.currentPitch, 0, 60, 0, 100);
+                this.currentPitch = pitch;
+                // Math.max(0, Math.min(60, pitch));
+                const sliderValue = this.scaleValue(this.currentPitch, 0, 60, 0, 60);
                 this.$pitchSlider.val(sliderValue);
                 $('#pitchValue').text(Math.round(this.currentPitch));
                 this.updateTransform();
             }
 
+            setYRotation(yaw) {
+                this.currentYaw = yaw;
+                // Math.max(0, Math.min(60, pitch));
+                const sliderValue = this.scaleValue(this.currentYaw, 0, 90, 0, 90);
+                this.$rotateYSlider.val(sliderValue);
+                $('#rotateYSlider').text(Math.round(this.currentYaw));
+                this.updateTransform();
+            }
+            // setPitch(sliderValue) {
+            //     // Convert FROM slider range (0-100) TO pitch range (0-60)
+            //     const pitch = this.scaleValue(sliderValue, 0, 100, 0, 60);
+            //     this.currentPitch = Math.max(0, Math.min(60, pitch));
+
+            //     this.$pitchSlider.val(sliderValue); // Keep slider at user's input
+            //     $('#pitchValue').text(Math.round(this.currentPitch));
+            //     this.updateTransform();
+            // }
+
             updateTransform() {
+                // const yaw = this.currentYaw || 0;
                 const transform = `
                     translate(${this.currentTranslate.x}px, ${this.currentTranslate.y}px)
                     scale(${this.currentZoom})
-                    rotate(${this.currentRotation}deg)
+                    rotateZ(${this.currentRotation}deg)
+                    skewX(${this.currentPitch}deg)
+                    rotateY(${this.currentYaw}deg)
+
                 `;
 
                 this.$svgWrapper.css({
                     'transform': transform,
-                    'transform-origin': 'center center'
+                    'transform-origin': 'center center',
+                    'transform-style': 'preserve-3d',
+                    'perspective': '1500px'
                 });
             }
 
@@ -2028,6 +2227,18 @@
 
             rotateView() {
                 const newRotation = (this.currentRotation + 90) % 360;
+                gsap.to(this, {
+                    duration: 0.8,
+                    ease: "power2.inOut",
+                    currentRotation: newRotation,
+                    onUpdate: () => {
+                        this.setRotation(this.currentRotation);
+                    }
+                });
+            }
+
+            rotateViewLeft() {
+                const newRotation = (this.currentRotation - 90) % 360;
                 gsap.to(this, {
                     duration: 0.8,
                     ease: "power2.inOut",
@@ -2096,8 +2307,26 @@
                 }
             }
 
-            showLayers() {
-                // Simple layer visualization
+            // showLayers() {
+            //     // Simple layer visualization
+            //     const layers = [];
+            //     this.$svgDisplay.find('g').each((index, group) => {
+            //         const $group = $(group);
+            //         const id = $group.attr('id') || `Layer ${layers.length + 1}`;
+            //         layers.push(id);
+            //     });
+
+            //     if (layers.length > 0) {
+            //         this.showToast(`Found ${layers.length} layers: ${layers.slice(0, 3).join(', ')}`, 'success');
+            //     } else {
+            //         this.showToast('No grouped layers found', 'success');
+            //     }
+            // }
+
+            buildLayersTree() {
+                const $layersPanel = $('#layersPanel');
+                $layersPanel.empty();
+
                 const layers = [];
                 this.$svgDisplay.find('g').each((index, group) => {
                     const $group = $(group);
@@ -2110,6 +2339,74 @@
                 } else {
                     this.showToast('No grouped layers found', 'success');
                 }
+
+                const buildTree = (elements, depth = 0) => {
+                    elements.forEach((el, idx) => {
+                        const $el = $(el);
+                        const tagName = el.tagName.toLowerCase();
+                        const id = $el.attr('id') || `${tagName}_${idx}`;
+                        const className = $el.attr('class') || '';
+                        const isGroup = tagName === 'g';
+                        const childCount = isGroup ? el.children.length : 0;
+
+                        const $item = $(`
+                <div class="layer-item" data-element-id="${id}" style="margin-left: ${depth * 12}px;">
+                    <button class="layer-toggle" data-toggle="${id}">
+                        ${isGroup ? (childCount > 0 ? '▼' : '◀') : '●'}
+                    </button>
+                    <button class="layer-toggle" data-visibility="${id}" title="Toggle visibility">
+                        👁
+                    </button>
+                    <span class="layer-name">${tagName}${id ? `#${id}` : ''}</span>
+                </div>
+            `);
+
+                        $item.on('click', () => this.selectLayer(el, $item));
+
+                        $item.find(`[data-toggle="${id}"]`).on('click', (e) => {
+                            e.stopPropagation();
+                            $item.toggleClass('collapsed');
+                            $item.find(`[data-toggle="${id}"]`).text(
+                                $item.hasClass('collapsed') ? '▶' : '▼'
+                            );
+                        });
+
+                        $item.find(`[data-visibility="${id}"]`).on('click', (e) => {
+                            e.stopPropagation();
+                            const $elem = $(el);
+                            const isHidden = $elem.css('display') === 'none';
+                            $elem.css('display', isHidden ? '' : 'none');
+                            $item.css('opacity', isHidden ? 1 : 0.5);
+                        });
+
+                        $layersPanel.append($item);
+
+                        // Recursively add children for groups
+                        if (isGroup && childCount > 0) {
+                            buildTree(Array.from(el.children), depth + 0.5);
+                        }
+                    });
+                };
+
+                const rootElements = Array.from(this.$svgDisplay[0].children);
+                buildTree(rootElements);
+            }
+
+            selectLayer(element, $layerItem) {
+                $('.layer-item.active').removeClass('active');
+                $layerItem.addClass('active');
+
+                // Highlight on canvas
+                this.clearSelection();
+                this.selectedElements = [element];
+                $(element).addClass('component-highlight');
+
+                this.showToast(`Selected: ${element.tagName}#${$(element).attr('id') || 'unnamed'}`, 'success');
+            }
+
+            showLayers() {
+                this.$sidePanel.addClass('open');
+                this.buildLayersTree();
             }
 
             toggleMeasureTool() {
