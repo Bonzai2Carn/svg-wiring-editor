@@ -891,6 +891,34 @@
                 if (envelope?.hints?.action !== 'back-annotate') return;
                 window.editor.receiveBackAnnotation(envelope);
             });
+
+            // VS Code: load the file that was open when the editor launched
+            if (window.__GINEXYS_INITIAL_FILE__) {
+                var f = window.__GINEXYS_INITIAL_FILE__;
+                setTimeout(function () {
+                    window.editor._loadVscodeFile(f.content, f.fileName, f.ext);
+                    // Apply pending mode after file is mounted
+                    if (window.__GINEXYS_INITIAL_MODE__) {
+                        var mode = window.__GINEXYS_INITIAL_MODE__;
+                        if (window.domainManager && typeof window.domainManager.activateMode === 'function') {
+                            window.domainManager.activateMode(mode);
+                        } else {
+                            var btn = document.querySelector('.mode-pill[data-mode="' + mode + '"]');
+                            if (btn) btn.click();
+                        }
+                    }
+                }, 150);
+            }
+
+            // VS Code: live-sync when the file is edited in the text editor
+            window.addEventListener('message', function (e) {
+                var msg = e.data;
+                if (!msg || !msg.__ginexys || msg.type !== 'ginexys:document-changed') return;
+                var p = msg.payload;
+                if (p && p.content !== undefined) {
+                    window.editor._loadVscodeFile(p.content, p.fileName, p.ext);
+                }
+            });
         });
     </script>
     <script>

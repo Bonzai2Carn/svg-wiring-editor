@@ -5,6 +5,63 @@
 
 Object.assign(MobileSVGEditor.prototype, {
 
+    // ── VS Code file loading ──────────────────────────────────────
+    // Called from the inline init script when __GINEXYS_INITIAL_FILE__ is present,
+    // and from the ginexys:document-changed message listener for live sync.
+    _loadVscodeFile(content, fileName, ext) {
+        if (!content || !content.trim()) return;
+        let svgContent, sourceFormat;
+
+        if (ext === '.svg' || ext === '.svgz') {
+            svgContent = content;
+            sourceFormat = 'svg';
+        } else if (ext === '.gschema' || ext === '.json') {
+            try {
+                const payload = JSON.parse(content);
+                if (payload.schema === 'ginexys-diagram-v2' && payload.svg) {
+                    svgContent = payload.svg;
+                    sourceFormat = 'gschema';
+                } else {
+                    this.showToast('Unrecognised schema format', 'error');
+                    return;
+                }
+            } catch (e) {
+                this.showToast('Could not parse file: ' + e.message, 'error');
+                return;
+            }
+        } else {
+            this.showToast('Unsupported file type: ' + ext, 'error');
+            return;
+        }
+
+        // Replace the current display (index 0) rather than stacking a new tab on
+        // every live-sync update — only push a new display on the first load.
+        const displayObj = {
+            id: `disp_vscode_${Date.now()}`,
+            analyzed: false,
+            snapshot: null,
+            name: fileName,
+            svgContent,
+            sourceFormat,
+        };
+
+        if (this.displays.length === 0 || this._vscodeFileLoaded) {
+            // Live-sync update: replace slot 0 in-place
+            this.displays[0] = displayObj;
+            this.activeDisplayIdx = 0;
+        } else {
+            this.displays.unshift(displayObj);
+            this.activeDisplayIdx = 0;
+        }
+        this._vscodeFileLoaded = true;
+
+        try {
+            this._mountParsedSvg(svgContent, `Loaded: ${fileName}`);
+        } catch (e) {
+            this.showToast('Render error: ' + e.message, 'error');
+        }
+    },
+
     loadSVGFiles(event) {
         const files = Array.from(event.target.files);
         event.target.value = ''; // reset so same file can be re-added
