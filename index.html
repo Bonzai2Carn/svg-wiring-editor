@@ -92,7 +92,11 @@
     <script src="../../assets/js/portfolio.js"></script>
 
     <!-- Ginexys gate + star toast -->
+    <!-- Tokens load first so modals render correctly in environments where
+         portfolio.css isn't reachable (e.g. VS Code webview sandbox). -->
+    <link rel="stylesheet" href="/assets/css/ginexys-modals-tokens.css">
     <link rel="stylesheet" href="/assets/css/ginexys-modals.css">
+    <script src="/assets/js/ginexys-modals.js" defer></script>
     <script src="/assets/js/ginexys-gate.js" defer></script>
     <script type="application/ld+json">
 {
@@ -414,24 +418,26 @@
                     <iconify-icon icon="material-symbols:data-object"></iconify-icon>
                     <span class="panel-content">JSON</span>
                 </button>
-                <button class="btn" id="sendToTafneBtn" title="Send netlist/BOM to Table Formatter (TAFNE)">
+                <div class="btn gx-pro-locked" style="position:relative" title="Send netlist/BOM to TAFNE (Pro)">
                     <iconify-icon icon="material-symbols:send-outline"></iconify-icon>
-                    <span class="panel-content">→ TAFNE</span>
-                </button>
-                <button class="btn" id="batchExportBtn" title="Batch export all loaded diagrams as SVG">
+                    <span class="panel-content">→ TAFNE <span class="gx-pro-badge">PRO</span></span>
+                    <div class="gx-pro-interceptor" data-pro-feature="ipc-schema-to-tafne"></div>
+                </div>
+                <div class="btn gx-pro-locked" style="position:relative" title="Batch export (Pro)">
                     <iconify-icon icon="material-symbols:download-for-offline-outline"></iconify-icon>
-                    <span class="panel-content">Batch</span>
-                </button>
-                <button class="btn export-domain-btn" data-mode="software" id="exportSqlBtn"
-                    title="Export ERD as SQL DDL">
+                    <span class="panel-content">Batch <span class="gx-pro-badge">PRO</span></span>
+                    <div class="gx-pro-interceptor" data-pro-feature="schema-batch-export"></div>
+                </div>
+                <div class="btn export-domain-btn gx-pro-locked" data-mode="software" style="position:relative" title="Export ERD as SQL DDL (Pro)">
                     <iconify-icon icon="material-symbols:database-outline"></iconify-icon>
-                    <span class="panel-content">SQL</span>
-                </button>
-                <button class="btn export-domain-btn" data-mode="software" id="exportMermaidSeqBtn"
-                    title="Export Sequence as Mermaid">
+                    <span class="panel-content">SQL <span class="gx-pro-badge">PRO</span></span>
+                    <div class="gx-pro-interceptor" data-pro-feature="schema-export-sql"></div>
+                </div>
+                <div class="btn export-domain-btn gx-pro-locked" data-mode="software" style="position:relative" title="Export Sequence as Mermaid (Pro)">
                     <iconify-icon icon="material-symbols:swap-horiz"></iconify-icon>
-                    <span class="panel-content">Mermaid</span>
-                </button>
+                    <span class="panel-content">Mermaid <span class="gx-pro-badge">PRO</span></span>
+                    <div class="gx-pro-interceptor" data-pro-feature="schema-export-mermaid"></div>
+                </div>
                 <button class="btn export-domain-btn" data-mode="software" id="exportFsmJsonBtn"
                     title="Export FSM as JSON">
                     <iconify-icon icon="material-symbols:data-object"></iconify-icon>
@@ -862,11 +868,7 @@
             // Fit initial placeholder to view
             setTimeout(() => window.editor.fitToView(), 100);
 
-            // CWS IPC: send netlist to TAFNE
-            $('#sendToTafneBtn').on('click', () => window.editor.sendNetlistToTafne());
-
-            $('#exportSqlBtn').on('click', () => window.editor.exportAsSqlDdl());
-            $('#exportMermaidSeqBtn').on('click', () => window.editor.exportAsMermaidSequence());
+            // sendToTafneBtn, batchExportBtn, exportSqlBtn, exportMermaidSeqBtn are now Pro-gated — handled by delegated interceptor below
             $('#exportFsmJsonBtn').on('click', () => window.editor.exportAsFsmJson());
             $('#exportXStateBtn').on('click', () => window.editor.exportAsXState());
             $('#sendFsmToTafneBtn').on('click', () => window.editor.sendFsmToTafne());
@@ -879,9 +881,7 @@
                     repo: 'carnworkstudios/schema-editor',
                     triggerIds: [
                         'exportViewBtn', 'exportHtmlBtn', 'exportJsonBtn',
-                        'sendToTafneBtn', 'batchExportBtn', 'exportSqlBtn',
-                        'exportMermaidSeqBtn', 'exportFsmJsonBtn',
-                        'exportXStateBtn', 'sendFsmToTafneBtn',
+                        'exportFsmJsonBtn', 'exportXStateBtn', 'sendFsmToTafneBtn',
                     ],
                 });
             }
@@ -891,6 +891,13 @@
                 if (envelope?.hints?.action !== 'back-annotate') return;
                 window.editor.receiveBackAnnotation(envelope);
             });
+
+            // Web OS deep link: ?view= query param maps to __GINEXYS_INITIAL_MODE__
+            // unless the VS Code extension already populated it.
+            var _viewQuery = new URLSearchParams(location.search).get('view');
+            if (!window.__GINEXYS_INITIAL_MODE__ && _viewQuery) {
+                window.__GINEXYS_INITIAL_MODE__ = _viewQuery;
+            }
 
             // VS Code: load the file that was open when the editor launched
             if (window.__GINEXYS_INITIAL_FILE__) {
@@ -906,6 +913,17 @@
                             var btn = document.querySelector('.mode-pill[data-mode="' + mode + '"]');
                             if (btn) btn.click();
                         }
+                    }
+                }, 150);
+            } else if (window.__GINEXYS_INITIAL_MODE__) {
+                // No file but mode requested (web deep link) — apply mode immediately.
+                setTimeout(function () {
+                    var mode = window.__GINEXYS_INITIAL_MODE__;
+                    if (window.domainManager && typeof window.domainManager.activateMode === 'function') {
+                        window.domainManager.activateMode(mode);
+                    } else {
+                        var btn = document.querySelector('.mode-pill[data-mode="' + mode + '"]');
+                        if (btn) btn.click();
                     }
                 }, 150);
             }
@@ -942,19 +960,39 @@
     </script>
 
     <script>
+        var SCHEMA_PRO_COPY = {
+            'ipc-schema-to-tafne':  'Send your Schema Editor netlist to TAFNE for BOM cleanup and export. Join the waitlist to get early access.',
+            'schema-batch-export':  'Batch export all loaded diagrams as SVG in one click. Join the waitlist to get early access.',
+            'schema-export-sql':    'Export your ERD as SQL DDL. Join the waitlist to get early access when Pro launches.',
+            'schema-export-mermaid':'Export your sequence diagram as Mermaid syntax. Join the waitlist to get early access.',
+        };
+
+        // Pro waitlist trigger: emit IPC when embedded in the OS, open local modal when standalone.
+        function openProWaitlist(featureSlug, subtitle) {
+            var copy = subtitle || SCHEMA_PRO_COPY[featureSlug] || 'This is a Pro feature. Join the waitlist to get early access when Pro launches.';
+            if (window.parent !== window) {
+                window.parent.postMessage({ type: 'gx:pro-gate-click', featureSlug: featureSlug, subtitle: copy }, '*');
+            } else if (window.GxModals) {
+                window.GxModals.open('pro_waitlist', { featureSlug: featureSlug, subtitle: copy });
+            }
+        }
+
+        // Delegated interceptor — handles all Pro-gated items in Schema Editor
+        document.addEventListener('click', function (e) {
+            var interceptor = e.target.closest('.gx-pro-interceptor');
+            if (!interceptor) return;
+            openProWaitlist(interceptor.dataset.proFeature);
+        });
+
         // Ginexys Send button — opens IPC panel in OS or waitlist when standalone
         (function () {
             var sendBtn = document.getElementById('schemaSendBtn');
             if (!sendBtn) return;
             sendBtn.addEventListener('click', function () {
-                if (window.parent !== window && window.parent.OsShell) {
+                if (window.parent !== window) {
                     window.parent.postMessage({ type: 'gx:open-ipc-panel' }, '*');
                 } else {
-                    var GxM = window.GxModals;
-                    if (GxM) GxM.open('pro_waitlist', {
-                        featureSlug: 'ipc-cross-tool',
-                        subtitle: 'Send your Schema Editor netlist to TAFNE or PDF Processor. Cross-tool flow is a Pro feature.',
-                    });
+                    openProWaitlist('ipc-cross-tool', 'Send your Schema Editor netlist to TAFNE or PDF Processor. Cross-tool flow is a Pro feature.');
                 }
             });
         })();
