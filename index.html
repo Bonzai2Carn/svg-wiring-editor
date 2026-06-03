@@ -97,6 +97,7 @@
     <link rel="stylesheet" href="/assets/css/ginexys-modals-tokens.css">
     <link rel="stylesheet" href="/assets/css/ginexys-modals.css">
     <script src="/assets/js/ginexys-modals.js" defer></script>
+    <script src="/assets/js/ginexys-auth.js" defer></script>
     <script src="/assets/js/ginexys-gate.js" defer></script>
     <script type="application/ld+json">
 {
@@ -877,7 +878,6 @@
             if (window.GxGate) {
                 GxGate.init({
                     toolKey: 'schema_export_count',
-                    gateKey: 'ginexys_schema_gate_shown',
                     repo: 'carnworkstudios/schema-editor',
                     triggerIds: [
                         'exportViewBtn', 'exportHtmlBtn', 'exportJsonBtn',
