@@ -312,7 +312,7 @@ ${svgData}
             pipeline.step(1, 'running', 'Checking…');
             if (!CwsBridge.isConnected) {
                 pipeline.step(1, 'running', 'Kernel sleeping — waking…');
-                try { window.parent.postMessage({ type: 'cws:ready' }, '*'); } catch (_) {}
+                try { window.parent.postMessage({ type: 'cws:ready' }, window.location.origin); } catch (_) {}
                 const connected = await this._cwsWaitForConnection(8000);
                 if (pipeline.cancelled) return;
                 if (!connected) {
