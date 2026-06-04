@@ -256,10 +256,34 @@
                     </div>
                 </div>
                 <!-- Dark Mode Toggle -->
-                <button id="darkModeBtn" class="theme-toggle-btn" title="Toggle dark/light"
+                <button id="darkModeBtn" class="btn theme-toggle-btn" title="Toggle dark/light"
                     aria-label="Toggle dark mode">
                     <iconify-icon icon="material-symbols:dark-mode-outline" style="font-size:16px;"></iconify-icon>
                 </button>
+
+                <!-- MCP Pill (VS Code only) -->
+                <div class="gx-mcp-pill-wrap" id="mcpPillWrap">
+                    <button class="gx-mcp-pill" id="mcpPillBtn" aria-label="Use with Copilot" aria-expanded="false">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z"/><path d="M12 8v4l3 3"/></svg>
+                        MCP
+                    </button>
+                    <div class="gx-mcp-popover" id="mcpPopover" role="tooltip">
+                        <div class="gx-mcp-popover-title">Use with Copilot</div>
+                        <div class="gx-mcp-popover-ref">
+                            <span>#ginexys_read_schema</span>
+                            <button title="Copy" onclick="navigator.clipboard.writeText('#ginexys_read_schema')">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                            </button>
+                        </div>
+                        <div class="gx-mcp-popover-sample">
+                            Sample prompt:
+                            <code>#ginexys_read_schema list all unconnected pins in this diagram</code>
+                        </div>
+                        <div class="gx-mcp-popover-docs">
+                            <a href="https://ginexys.com/docs#mcp-tools" target="_blank">Full MCP docs &rarr;</a>
+                        </div>
+                    </div>
+                </div>
 
                 <!-- Ginexys Send To -->
                 <button id="schemaSendBtn" class="gx-tool-send-btn" title="Send to another Ginexys tool (Pro)">
@@ -887,10 +911,34 @@
             }
 
             // CWS IPC: receive back-annotation from TAFNE (no-op when OS bridge absent)
-            if (window.CwsBridge) CwsBridge.onData(function (envelope) {
-                if (envelope?.hints?.action !== 'back-annotate') return;
-                window.editor.receiveBackAnnotation(envelope);
-            });
+            if (window.CwsBridge) {
+                CwsBridge.onData(function (envelope) {
+                    if (envelope?.hints?.action !== 'back-annotate') return;
+                    window.editor.receiveBackAnnotation(envelope);
+                });
+                // MCP pill: show when embedded in VS Code
+                document.body.classList.add('gx-embedded');
+                (function () {
+                    var pill = document.getElementById('mcpPillBtn');
+                    var pop  = document.getElementById('mcpPopover');
+                    if (!pill || !pop) return;
+                    document.body.appendChild(pop);
+                    pill.addEventListener('click', function (e) {
+                        e.stopPropagation();
+                        var open = pop.classList.toggle('open');
+                        pill.setAttribute('aria-expanded', open ? 'true' : 'false');
+                        if (open) {
+                            var r = pill.getBoundingClientRect();
+                            pop.style.top  = (r.bottom + 8) + 'px';
+                            pop.style.left = Math.max(8, r.right - 340) + 'px';
+                        }
+                    });
+                    document.addEventListener('click', function () {
+                        pop.classList.remove('open');
+                        pill.setAttribute('aria-expanded', 'false');
+                    });
+                })();
+            }
 
             // Web OS deep link: ?view= query param maps to __GINEXYS_INITIAL_MODE__
             // unless the VS Code extension already populated it.
@@ -931,7 +979,26 @@
             // VS Code: live-sync when the file is edited in the text editor
             window.addEventListener('message', function (e) {
                 var msg = e.data;
-                if (!msg || !msg.__ginexys || msg.type !== 'ginexys:document-changed') return;
+                if (!msg || !msg.__ginexys) return;
+
+                // MCP round-trip: extension host requests netlist, reply with diagram payload
+                if (msg.type === 'ginexys:mcp-read-schema') {
+                    var netlist = null;
+                    try {
+                        if (window.editor && typeof window.editor._buildDiagramPayload === 'function') {
+                            netlist = window.editor._buildDiagramPayload();
+                        }
+                    } catch (_) {}
+                    if (window.CwsBridge) {
+                        window.CwsBridge.send('ginexys:mcp-reply', {
+                            requestId: msg.requestId,
+                            payload: { netlist: netlist },
+                        });
+                    }
+                    return;
+                }
+
+                if (msg.type !== 'ginexys:document-changed') return;
                 var p = msg.payload;
                 if (p && p.content !== undefined) {
                     window.editor._loadVscodeFile(p.content, p.fileName, p.ext);

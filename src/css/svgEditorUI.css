@@ -1862,7 +1862,7 @@ body.dark-mode .btn:disabled {
 }
 
 /* Mobile (<= 640px): hide pills, show native select */
-@media (max-width: 640px) {
+@media (max-width: 740px) {
     .mode-switcher {
         display: none !important;
     }
@@ -2492,4 +2492,106 @@ body:not(.dark-mode) .layer-drag-handle {
     border-color: #00e5ff !important;
     color: #00e5ff !important;
     box-shadow: 0 0 8px rgba(0, 229, 255, 0.25);
+}
+/* ── MCP Pill ──────────────────────────────────────────────────────────── */
+.gx-mcp-pill-wrap {
+    position: relative;
+    display: none;
+    align-items: center;
+}
+body.gx-embedded .gx-mcp-pill-wrap { display: flex; }
+
+.gx-mcp-pill {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px 3px 7px;
+    border-radius: 20px;
+    border: 1px solid var(--border-default);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: border-color 0.15s, color 0.15s;
+    user-select: none;
+}
+.gx-mcp-pill:hover {
+    border-color: var(--border-accent);
+    color: var(--border-accent);
+}
+.gx-mcp-pill svg { flex-shrink: 0; }
+
+.gx-mcp-popover {
+    display: none;
+    position: fixed;
+    z-index: 99999;
+    min-width: 280px;
+    max-width: 340px;
+    background: var(--surface-overlay);
+    border: 1px solid var(--border-default);
+    border-radius: 10px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.28);
+    padding: 14px 16px;
+    color: var(--text-primary);
+    font-size: 12px;
+    line-height: 1.6;
+}
+.gx-mcp-popover.open { display: block; }
+.gx-mcp-popover-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-secondary);
+    margin-bottom: 10px;
+}
+.gx-mcp-popover-ref {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--surface-base);
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-family: monospace;
+    font-size: 12px;
+    margin-bottom: 10px;
+}
+.gx-mcp-popover-ref button {
+    margin-left: auto;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 2px 4px;
+    color: var(--text-secondary);
+    border-radius: 4px;
+}
+.gx-mcp-popover-ref button:hover { color: var(--border-accent); }
+.gx-mcp-popover-sample {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+}
+.gx-mcp-popover-sample code {
+    display: block;
+    margin-top: 4px;
+    padding: 6px 8px;
+    background: var(--surface-base);
+    border-radius: 5px;
+    font-family: monospace;
+    font-size: 11px;
+    color: var(--text-primary);
+    word-break: break-word;
+}
+.gx-mcp-popover-docs {
+    margin-top: 10px;
+    font-size: 11px;
+    text-align: right;
+}
+.gx-mcp-popover-docs a {
+    color: var(--border-accent);
+    text-decoration: none;
 }
