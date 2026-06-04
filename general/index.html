@@ -9,7 +9,7 @@
     <!-- ── Icons ── -->
     <link rel="icon" type="image/png" href="/assets/images/Ginexys_Logo.png">
     <title>General Vector Drawing — Free Browser-Based SVG Editor | GINEXYS</title>
-    <meta name="description" content="General-purpose vector drawing for illustrations, icons, and freeform diagrams. Full canvas with grouping, layers, snapping, and SVG export.">
+    <meta name="description" content="General-purpose vector drawing for illustrations, icons, and freeform diagrams. Full canvas with grouping, layers, snapping, and SVG export. Switch to Electrical, UML, or Floorplan for domain-specific symbol libraries.">
     <meta name="keywords"
         content="electrical schematic editor online, circuit diagram maker free, bill of materials generator, BOM from schematic, UML diagram maker online, ER diagram tool, floor plan editor, electrical BOM generator, PCB schematic editor, Arduino circuit diagram, wiring diagram online, GINEXYS, schema editor">
     <meta name="author" content="GINEXYS">
@@ -20,16 +20,14 @@
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="GINEXYS">
     <meta property="og:title" content="General Vector Drawing — Free Browser-Based SVG Editor | GINEXYS">
-    <meta property="og:description"
-        content="General-purpose vector drawing for illustrations, icons, and freeform diagrams. Full canvas with grouping, layers, snapping, and SVG export. Switch to Electrical, Software, or Construction for domain-specific symbol libraries.">
+    <meta property="og:description" content="General-purpose vector drawing for illustrations, icons, and freeform diagrams. Full canvas with grouping, layers, snapping, and SVG export. Switch to Electrical, UML, or Floorplan for domain-specific symbol libraries.">
     <meta property="og:url" content="https://ginexys.com/tools/schema-editor/general/">
     <meta property="og:image" content="https://ginexys.com/assets/images/og-image.png">
 
     <!-- ── Twitter / X Card ── -->
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="General Vector Drawing — Free Browser-Based SVG Editor | GINEXYS">
-    <meta name="twitter:description"
-        content="General-purpose vector drawing for illustrations, icons, and freeform diagrams. Full canvas with grouping, layers, snapping, and SVG export. Switch to Electrical, Software, or Construction for domain-specific symbol libraries.">
+    <meta name="twitter:description" content="General-purpose vector drawing for illustrations, icons, and freeform diagrams. Full canvas with grouping, layers, snapping, and SVG export. Switch to Electrical, UML, or Floorplan for domain-specific symbol libraries.">
     <meta name="twitter:image" content="https://ginexys.com/assets/images/og-image.png">
     <meta name="twitter:site" content="@ginexys">
 
@@ -38,26 +36,7 @@
 
 
     <!-- ── FAQ Structured Data (AEO — Answer Engine Optimization) ── -->
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@graph": [
-        {
-          "@type": "FAQPage",
-          "mainEntity": [
-            {
-              "@type": "Question",
-              "name": "Does the online schematic editor support wire tracing and Manhattan routing?",
-              "acceptedAnswer": {
-                "@type": "Answer",
-                "text": "Yes, it features precise Manhattan routing for clean layouts and a Trace Mode that highlights the complete connectivity path of any selected wire, ensuring your circuit logic is sound without requiring heavy desktop software. Review the <a href=\"https://ginexys.com/tools/schema-editor/docs/features/index.html\">Features Documentation</a> for tracing instructions."
-              }
-            }
-          ]
-        }
-      ]
-    }
-    </script>
+    
 
 
     <!-- OS Bridge -->
@@ -92,10 +71,15 @@
     <script src="../../assets/js/portfolio.js"></script>
 
     <!-- Ginexys gate + star toast -->
+    <!-- Tokens load first so modals render correctly in environments where
+         portfolio.css isn't reachable (e.g. VS Code webview sandbox). -->
+    <link rel="stylesheet" href="/assets/css/ginexys-modals-tokens.css">
     <link rel="stylesheet" href="/assets/css/ginexys-modals.css">
+    <script src="/assets/js/ginexys-modals.js" defer></script>
     <script src="/assets/js/ginexys-auth.js" defer></script>
     <script src="/assets/js/ginexys-gate.js" defer></script>
-    <script type="application/ld+json">
+    
+<script type="application/ld+json">
 {
   "@context": "https://schema.org",
   "@graph": [
@@ -105,7 +89,7 @@
       "url": "https://ginexys.com/tools/schema-editor/general/",
       "applicationCategory": "DeveloperApplication",
       "operatingSystem": "Web",
-      "description": "General-purpose vector drawing for illustrations, icons, and freeform diagrams. Full canvas with grouping, layers, snapping, and SVG export. Switch to Electrical, Software, or Construction for domain-specific symbol libraries.",
+      "description": "General-purpose vector drawing for illustrations, icons, and freeform diagrams. Full canvas with grouping, layers, snapping, and SVG export. Switch to Electrical, UML, or Floorplan for domain-specific symbol libraries.",
       "featureList": [
         "Freeform vector drawing — lines, shapes, text, and imported images",
         "Layer management with visibility toggle and element locking",
@@ -127,7 +111,6 @@
   ]
 }
 </script>
-  <link rel="canonical" href="https://ginexys.com/tools/schema-editor/general/">
 </head>
 
 <body class="dark-mode">
@@ -253,9 +236,38 @@
                     </div>
                 </div>
                 <!-- Dark Mode Toggle -->
-                <button id="darkModeBtn" class="theme-toggle-btn" title="Toggle dark/light"
+                <button id="darkModeBtn" class="btn theme-toggle-btn" title="Toggle dark/light"
                     aria-label="Toggle dark mode">
                     <iconify-icon icon="material-symbols:dark-mode-outline" style="font-size:16px;"></iconify-icon>
+                </button>
+
+                <!-- MCP Pill (VS Code only) -->
+                <div class="gx-mcp-pill-wrap" id="mcpPillWrap">
+                    <button class="gx-mcp-pill" id="mcpPillBtn" aria-label="Use with Copilot" aria-expanded="false">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z"/><path d="M12 8v4l3 3"/></svg>
+                        MCP
+                    </button>
+                    <div class="gx-mcp-popover" id="mcpPopover" role="tooltip">
+                        <div class="gx-mcp-popover-title">Use with Copilot</div>
+                        <div class="gx-mcp-popover-ref">
+                            <span>#ginexys_read_schema</span>
+                            <button title="Copy" onclick="navigator.clipboard.writeText('#ginexys_read_schema')">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                            </button>
+                        </div>
+                        <div class="gx-mcp-popover-sample">
+                            Sample prompt:
+                            <code>#ginexys_read_schema list all unconnected pins in this diagram</code>
+                        </div>
+                        <div class="gx-mcp-popover-docs">
+                            <a href="https://ginexys.com/docs#mcp-tools" target="_blank">Full MCP docs &rarr;</a>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Ginexys Send To -->
+                <button id="schemaSendBtn" class="gx-tool-send-btn" title="Send to another Ginexys tool (Pro)">
+                    <img src="/assets/images/Ginexys_Logo.png" width="18" height="18" alt="Ginexys" style="border-radius:50%;display:block;">
                 </button>
 
             </div>
@@ -411,24 +423,26 @@
                     <iconify-icon icon="material-symbols:data-object"></iconify-icon>
                     <span class="panel-content">JSON</span>
                 </button>
-                <button class="btn" id="sendToTafneBtn" title="Send netlist/BOM to Table Formatter (TAFNE)">
+                <div class="btn gx-pro-locked" style="position:relative" title="Send netlist/BOM to TAFNE (Pro)">
                     <iconify-icon icon="material-symbols:send-outline"></iconify-icon>
-                    <span class="panel-content">→ TAFNE</span>
-                </button>
-                <button class="btn" id="batchExportBtn" title="Batch export all loaded diagrams as SVG">
+                    <span class="panel-content">→ TAFNE <span class="gx-pro-badge">PRO</span></span>
+                    <div class="gx-pro-interceptor" data-pro-feature="ipc-schema-to-tafne"></div>
+                </div>
+                <div class="btn gx-pro-locked" style="position:relative" title="Batch export (Pro)">
                     <iconify-icon icon="material-symbols:download-for-offline-outline"></iconify-icon>
-                    <span class="panel-content">Batch</span>
-                </button>
-                <button class="btn export-domain-btn" data-mode="software" id="exportSqlBtn"
-                    title="Export ERD as SQL DDL">
+                    <span class="panel-content">Batch <span class="gx-pro-badge">PRO</span></span>
+                    <div class="gx-pro-interceptor" data-pro-feature="schema-batch-export"></div>
+                </div>
+                <div class="btn export-domain-btn gx-pro-locked" data-mode="software" style="position:relative" title="Export ERD as SQL DDL (Pro)">
                     <iconify-icon icon="material-symbols:database-outline"></iconify-icon>
-                    <span class="panel-content">SQL</span>
-                </button>
-                <button class="btn export-domain-btn" data-mode="software" id="exportMermaidSeqBtn"
-                    title="Export Sequence as Mermaid">
+                    <span class="panel-content">SQL <span class="gx-pro-badge">PRO</span></span>
+                    <div class="gx-pro-interceptor" data-pro-feature="schema-export-sql"></div>
+                </div>
+                <div class="btn export-domain-btn gx-pro-locked" data-mode="software" style="position:relative" title="Export Sequence as Mermaid (Pro)">
                     <iconify-icon icon="material-symbols:swap-horiz"></iconify-icon>
-                    <span class="panel-content">Mermaid</span>
-                </button>
+                    <span class="panel-content">Mermaid <span class="gx-pro-badge">PRO</span></span>
+                    <div class="gx-pro-interceptor" data-pro-feature="schema-export-mermaid"></div>
+                </div>
                 <button class="btn export-domain-btn" data-mode="software" id="exportFsmJsonBtn"
                     title="Export FSM as JSON">
                     <iconify-icon icon="material-symbols:data-object"></iconify-icon>
@@ -859,11 +873,7 @@
             // Fit initial placeholder to view
             setTimeout(() => window.editor.fitToView(), 100);
 
-            // CWS IPC: send netlist to TAFNE
-            $('#sendToTafneBtn').on('click', () => window.editor.sendNetlistToTafne());
-
-            $('#exportSqlBtn').on('click', () => window.editor.exportAsSqlDdl());
-            $('#exportMermaidSeqBtn').on('click', () => window.editor.exportAsMermaidSequence());
+            // sendToTafneBtn, batchExportBtn, exportSqlBtn, exportMermaidSeqBtn are now Pro-gated — handled by delegated interceptor below
             $('#exportFsmJsonBtn').on('click', () => window.editor.exportAsFsmJson());
             $('#exportXStateBtn').on('click', () => window.editor.exportAsXState());
             $('#sendFsmToTafneBtn').on('click', () => window.editor.sendFsmToTafne());
@@ -872,21 +882,107 @@
             if (window.GxGate) {
                 GxGate.init({
                     toolKey: 'schema_export_count',
-                    gateKey: 'ginexys_schema_gate_shown',
                     repo: 'carnworkstudios/schema-editor',
                     triggerIds: [
                         'exportViewBtn', 'exportHtmlBtn', 'exportJsonBtn',
-                        'sendToTafneBtn', 'batchExportBtn', 'exportSqlBtn',
-                        'exportMermaidSeqBtn', 'exportFsmJsonBtn',
-                        'exportXStateBtn', 'sendFsmToTafneBtn',
+                        'exportFsmJsonBtn', 'exportXStateBtn', 'sendFsmToTafneBtn',
                     ],
                 });
             }
 
             // CWS IPC: receive back-annotation from TAFNE (no-op when OS bridge absent)
-            if (window.CwsBridge) CwsBridge.onData(function (envelope) {
-                if (envelope?.hints?.action !== 'back-annotate') return;
-                window.editor.receiveBackAnnotation(envelope);
+            if (window.CwsBridge) {
+                CwsBridge.onData(function (envelope) {
+                    if (envelope?.hints?.action !== 'back-annotate') return;
+                    window.editor.receiveBackAnnotation(envelope);
+                });
+                // MCP pill: show when embedded in VS Code
+                document.body.classList.add('gx-embedded');
+                (function () {
+                    var pill = document.getElementById('mcpPillBtn');
+                    var pop  = document.getElementById('mcpPopover');
+                    if (!pill || !pop) return;
+                    document.body.appendChild(pop);
+                    pill.addEventListener('click', function (e) {
+                        e.stopPropagation();
+                        var open = pop.classList.toggle('open');
+                        pill.setAttribute('aria-expanded', open ? 'true' : 'false');
+                        if (open) {
+                            var r = pill.getBoundingClientRect();
+                            pop.style.top  = (r.bottom + 8) + 'px';
+                            pop.style.left = Math.max(8, r.right - 340) + 'px';
+                        }
+                    });
+                    document.addEventListener('click', function () {
+                        pop.classList.remove('open');
+                        pill.setAttribute('aria-expanded', 'false');
+                    });
+                })();
+            }
+
+            // Web OS deep link: ?view= query param maps to __GINEXYS_INITIAL_MODE__
+            // unless the VS Code extension already populated it.
+            var _viewQuery = new URLSearchParams(location.search).get('view');
+            if (!window.__GINEXYS_INITIAL_MODE__ && _viewQuery) {
+                window.__GINEXYS_INITIAL_MODE__ = _viewQuery;
+            }
+
+            // VS Code: load the file that was open when the editor launched
+            if (window.__GINEXYS_INITIAL_FILE__) {
+                var f = window.__GINEXYS_INITIAL_FILE__;
+                setTimeout(function () {
+                    window.editor._loadVscodeFile(f.content, f.fileName, f.ext);
+                    // Apply pending mode after file is mounted
+                    if (window.__GINEXYS_INITIAL_MODE__) {
+                        var mode = window.__GINEXYS_INITIAL_MODE__;
+                        if (window.domainManager && typeof window.domainManager.activateMode === 'function') {
+                            window.domainManager.activateMode(mode);
+                        } else {
+                            var btn = document.querySelector('.mode-pill[data-mode="' + mode + '"]');
+                            if (btn) btn.click();
+                        }
+                    }
+                }, 150);
+            } else if (window.__GINEXYS_INITIAL_MODE__) {
+                // No file but mode requested (web deep link) — apply mode immediately.
+                setTimeout(function () {
+                    var mode = window.__GINEXYS_INITIAL_MODE__;
+                    if (window.domainManager && typeof window.domainManager.activateMode === 'function') {
+                        window.domainManager.activateMode(mode);
+                    } else {
+                        var btn = document.querySelector('.mode-pill[data-mode="' + mode + '"]');
+                        if (btn) btn.click();
+                    }
+                }, 150);
+            }
+
+            // VS Code: live-sync when the file is edited in the text editor
+            window.addEventListener('message', function (e) {
+                var msg = e.data;
+                if (!msg || !msg.__ginexys) return;
+
+                // MCP round-trip: extension host requests netlist, reply with diagram payload
+                if (msg.type === 'ginexys:mcp-read-schema') {
+                    var netlist = null;
+                    try {
+                        if (window.editor && typeof window.editor._buildDiagramPayload === 'function') {
+                            netlist = window.editor._buildDiagramPayload();
+                        }
+                    } catch (_) {}
+                    if (window.CwsBridge) {
+                        window.CwsBridge.send('ginexys:mcp-reply', {
+                            requestId: msg.requestId,
+                            payload: { netlist: netlist },
+                        });
+                    }
+                    return;
+                }
+
+                if (msg.type !== 'ginexys:document-changed') return;
+                var p = msg.payload;
+                if (p && p.content !== undefined) {
+                    window.editor._loadVscodeFile(p.content, p.fileName, p.ext);
+                }
             });
         });
     </script>
@@ -906,6 +1002,45 @@
                 if (!pill) return;
                 var mode = pill.dataset.mode;
                 if (mode) history.replaceState({}, '', '/tools/schema-editor/' + mode + '/');
+            });
+        })();
+    </script>
+
+    <script>
+        var SCHEMA_PRO_COPY = {
+            'ipc-schema-to-tafne':  'Send your Schema Editor netlist to TAFNE for BOM cleanup and export. Join the waitlist to get early access.',
+            'schema-batch-export':  'Batch export all loaded diagrams as SVG in one click. Join the waitlist to get early access.',
+            'schema-export-sql':    'Export your ERD as SQL DDL. Join the waitlist to get early access when Pro launches.',
+            'schema-export-mermaid':'Export your sequence diagram as Mermaid syntax. Join the waitlist to get early access.',
+        };
+
+        // Pro waitlist trigger: emit IPC when embedded in the OS, open local modal when standalone.
+        function openProWaitlist(featureSlug, subtitle) {
+            var copy = subtitle || SCHEMA_PRO_COPY[featureSlug] || 'This is a Pro feature. Join the waitlist to get early access when Pro launches.';
+            if (window.parent !== window) {
+                window.parent.postMessage({ type: 'gx:pro-gate-click', featureSlug: featureSlug, subtitle: copy }, window.location.origin);
+            } else if (window.GxModals) {
+                window.GxModals.open('pro_waitlist', { featureSlug: featureSlug, subtitle: copy });
+            }
+        }
+
+        // Delegated interceptor — handles all Pro-gated items in Schema Editor
+        document.addEventListener('click', function (e) {
+            var interceptor = e.target.closest('.gx-pro-interceptor');
+            if (!interceptor) return;
+            openProWaitlist(interceptor.dataset.proFeature);
+        });
+
+        // Ginexys Send button — opens IPC panel in OS or waitlist when standalone
+        (function () {
+            var sendBtn = document.getElementById('schemaSendBtn');
+            if (!sendBtn) return;
+            sendBtn.addEventListener('click', function () {
+                if (window.parent !== window) {
+                    window.parent.postMessage({ type: 'gx:open-ipc-panel' }, window.location.origin);
+                } else {
+                    openProWaitlist('ipc-cross-tool', 'Send your Schema Editor netlist to TAFNE or PDF Processor. Cross-tool flow is a Pro feature.');
+                }
             });
         })();
     </script>
