@@ -36,6 +36,63 @@
   <script type="module" src="/assets/components/gx-schema-shell.js"></script>
 </head>
 <body>
+  <!-- Static SEO content — replaced by <gx-schema-shell> once JS loads -->
+  <div id="gx-seo-prerender" style="font-family:system-ui,sans-serif;max-width:860px;margin:40px auto;padding:0 20px;color:#e2e8f0;background:#0f1117;">
+    <nav style="font-size:12px;color:#94a3b8;margin-bottom:24px;">
+      <a href="/" style="color:#94a3b8;">GINEXYS</a> &rsaquo;
+      <a href="/tools/schema-editor/general/" style="color:#94a3b8;">Schema Editor</a> &rsaquo;
+      Construction &amp; Layout
+    </nav>
+    <h1 style="font-size:28px;font-weight:700;margin:0 0 12px;">Construction &amp; Layout Editor — Floor Plans, HVAC Maps &amp; Architectural Drawings</h1>
+    <p style="color:#94a3b8;font-size:15px;line-height:1.6;margin:0 0 32px;">
+      Draft room layouts, floor plans, HVAC ductwork maps, and architectural drawings in your browser.
+      Purpose-built symbol library for walls, doors, windows, fixtures, and mechanical systems.
+      Supports both metric (mm, cm, m) and imperial (in, ft) coordinate systems.
+      No AutoCAD license, no install required.
+    </p>
+
+    <h2 style="font-size:18px;font-weight:600;margin:0 0 14px;color:#f1f5f9;">What you can design</h2>
+    <ul style="color:#94a3b8;font-size:14px;line-height:1.8;padding-left:20px;margin:0 0 32px;">
+      <li>Room layout and floor plan diagrams with accurate wall and door placement</li>
+      <li>HVAC ductwork routing maps for residential and light commercial systems</li>
+      <li>Architectural elevation drawings with dimension annotations</li>
+      <li>Furniture and fixture placement layouts for interior planning</li>
+      <li>Site plans with property boundaries, setbacks, and utility paths</li>
+      <li>Fire egress and safety exit maps with emergency symbol sets</li>
+    </ul>
+
+    <h2 style="font-size:18px;font-weight:600;margin:0 0 14px;color:#f1f5f9;">Measurement and grid support</h2>
+    <ul style="color:#94a3b8;font-size:14px;line-height:1.8;padding-left:20px;margin:0 0 32px;">
+      <li>Metric grid: millimeters, centimeters, meters with snap-to-grid precision</li>
+      <li>Imperial grid: inches and feet with fractional snap increments</li>
+      <li>Scale ruler overlay for real-world dimension reference</li>
+      <li>Dimension annotation tool auto-calculates lengths from placed elements</li>
+    </ul>
+
+    <h2 style="font-size:18px;font-weight:600;margin:0 0 14px;color:#f1f5f9;">Export options</h2>
+    <ul style="color:#94a3b8;font-size:14px;line-height:1.8;padding-left:20px;margin:0 0 32px;">
+      <li><strong>SVG</strong> — clean vector output for printing or web embedding at any scale</li>
+      <li><strong>PNG</strong> — rasterized export at configurable DPI</li>
+      <li><strong>JSON</strong> — full scene graph for re-import or programmatic processing</li>
+    </ul>
+
+    <h2 style="font-size:18px;font-weight:600;margin:0 0 14px;color:#f1f5f9;">Frequently asked questions</h2>
+    <dl style="color:#94a3b8;font-size:14px;line-height:1.6;margin:0 0 32px;">
+      <dt style="color:#f1f5f9;font-weight:600;margin-top:16px;">Can I switch between metric and imperial mid-drawing?</dt>
+      <dd style="margin:4px 0 0 0;">Yes. The unit system can be changed at any time from the canvas settings panel. Existing element dimensions are recalculated automatically.</dd>
+      <dt style="color:#f1f5f9;font-weight:600;margin-top:16px;">Is this a replacement for AutoCAD or Revit?</dt>
+      <dd style="margin:4px 0 0 0;">No — it&#x2019;s a lightweight browser-native drafting tool for early-stage layouts, quick diagrams, and documentation drawings. For construction-grade BIM files, you still need dedicated CAD software.</dd>
+      <dt style="color:#f1f5f9;font-weight:600;margin-top:16px;">Does any data leave my machine?</dt>
+      <dd style="margin:4px 0 0 0;">No. All drawing and export processing runs entirely in your browser. Nothing is sent to a server. Drawings are stored locally in browser IndexedDB.</dd>
+    </dl>
+
+    <p style="font-size:13px;color:#475569;border-top:1px solid #1e293b;padding-top:16px;margin-top:8px;">
+      Part of <a href="/tools/schema-editor/general/" style="color:#64748b;">GINEXYS Schema Editor</a> &mdash;
+      also available in <a href="/tools/schema-editor/electrical/" style="color:#64748b;">Electrical</a>,
+      <a href="/tools/schema-editor/software/" style="color:#64748b;">Software Design</a>, and
+      <a href="/tools/schema-editor/floorplan/" style="color:#64748b;">Floorplan</a> modes.
+    </p>
+  </div>
   <gx-schema-shell active-mode="construction"></gx-schema-shell>
 </body>
 </html>
