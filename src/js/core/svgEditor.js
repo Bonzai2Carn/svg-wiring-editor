@@ -225,6 +225,8 @@ class MobileSVGEditor {
         $('#fitViewBtn').on('click',    () => this.fitToView());
         $('#rotateBtn').on('click',     () => this.rotateView());
         $('#rotateLeftBtn').on('click', () => this.rotateViewLeft());
+        $('#ercBtn').on('click', () => this.runErc());
+
         $('#layersBtn').on('click', () => {
             if (this.$sidePanel?.hasClass('open')) {
                 this.closeSidePanel();

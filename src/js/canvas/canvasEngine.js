@@ -1602,8 +1602,8 @@ Object.assign(MobileSVGEditor.prototype, {
             // AABB overlap on both axes
             if (elMaxX < mx1 || elMinX > mx2 || elMaxY < my1 || elMinY > my2) return;
 
-            // Prefer the top-level domain-symbol group over its inner shapes
-            const target = el.closest('.domain-symbol') || el;
+            // Prefer the top-level domain-symbol or user group over inner shapes
+            const target = el.closest('g[id^="group_"]') || el.closest('.domain-symbol') || el;
             if (!seen.has(target)) {
                 seen.add(target);
                 hits.push(target);
@@ -1630,7 +1630,7 @@ Object.assign(MobileSVGEditor.prototype, {
         // (single click selects the whole group; Figma/draw.io convention)
         this.$svgDisplay.on('dblclick.canvas', (e) => {
             if (this.activeTool !== 'select') return;
-            const sym = e.target.closest?.('.domain-symbol');
+            const sym = e.target.closest?.('.domain-symbol, g[id^="group_"]');
             if (!sym || e.target === sym) return;
             if (e.target.classList.contains('component-hitbox')) return;
             e.preventDefault();
@@ -1701,10 +1701,17 @@ Object.assign(MobileSVGEditor.prototype, {
                 return;
             }
 
-            // Walk up to the parent domain-symbol group so the whole
-            // component (with its translate transform) gets selected
-            const symGroup = el.closest('.domain-symbol');
-            if (symGroup) el = symGroup;
+            // Walk up to the parent domain-symbol OR user-created group so the
+            // whole unit gets selected. Outermost user group wins (nested groups).
+            const symGroup = el.closest('.domain-symbol, g[id^="group_"]');
+            if (symGroup) {
+                el = symGroup;
+                let p = el.parentElement;
+                while (p && p.id !== '_cameraRotGroup') {
+                    if (p.tagName === 'g' && p.id?.startsWith('group_')) el = p;
+                    p = p.parentElement;
+                }
+            }
 
             // Alt + click on a drawn wire → branch a new wire from that point
             if (e.altKey && !symGroup) {
