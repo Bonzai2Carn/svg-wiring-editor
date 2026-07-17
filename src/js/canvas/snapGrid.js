@@ -157,12 +157,15 @@ Object.assign(MobileSVGEditor.prototype, {
     smartSnap(x, y, excludeIds = []) {
         if (!this._grid.snapOn) return { x, y };
         const gridPt = this.snapPoint(x, y);
-        const THRESH = 8 / (this.zoom || 1);
+        const THRESH = Math.min(8 / (this.zoom || 1), 24);   // clamp: don't balloon at low zoom
 
+        // Targets: domain symbols, tagged wires, AND user-drawn shapes (el_ ids) —
+        // ink strokes excluded (freehand is never a snap reference)
         const elementsInfo = Array.from(this._contentRoot?.querySelectorAll?.(
-                '.domain-symbol, path[data-geo-class="wire"]'
+                '.domain-symbol, path[data-geo-class="wire"], [id^="el_"]'
             ) ?? []).filter(el =>
                 !el.id?.startsWith('_') &&
+                el.getAttribute('data-ink') !== 'true' &&
                 !el.classList.contains('snap-guide') &&
                 !el.classList.contains('draw-preview') &&
                 !excludeIds.includes(el.id)
@@ -204,7 +207,7 @@ Object.assign(MobileSVGEditor.prototype, {
     // edge to a reference element edge. Returns {delta, guides} or null.
     _computeAlignSnap(origBBoxes, delta, excludeIds = []) {
         if (!this._grid.snapOn || !origBBoxes?.length) return null;
-        const THRESH = 8 / (this.zoom || 1);
+        const THRESH = Math.min(8 / (this.zoom || 1), 24);   // clamp: don't balloon at low zoom
 
         // Compute union bbox of all selection elements projected to current delta
         let uL = Infinity, uT = Infinity, uR = -Infinity, uB = -Infinity;
@@ -343,9 +346,10 @@ Object.assign(MobileSVGEditor.prototype, {
         const root = this._contentRoot || this.$svgDisplay?.[0];
         if (!root) return [];
         const out = [];
-        root.querySelectorAll('.domain-symbol').forEach(el => {
+        root.querySelectorAll('.domain-symbol, [id^="el_"]').forEach(el => {
             if (el.id?.startsWith('_') || excludeIds.includes(el.id)) return;
             if (el.dataset?.seSystem === 'true') return;
+            if (el.getAttribute('data-ink') === 'true') return;
             try {
                 const bb = this._getVisualBBoxWorld(el);
                 if (bb && (bb.width > 0 || bb.height > 0)) {

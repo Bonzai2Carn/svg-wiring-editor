@@ -293,9 +293,9 @@ class MobileSVGEditor {
 
         // Mouse drag (only in select mode — drawing tools handle their own)
         this.$svgContainer.on('mousedown', (e) => {
-            if (this.activeTool === 'select') this.startDrag(e);
+            if (this.activeTool === 'select' || this.activeTool === 'hand') this.startDrag(e);
         });
-        $(document).on('mousemove', (e) => { if (this.activeTool === 'select') this.drag(e); });
+        $(document).on('mousemove', (e) => { if (this.activeTool === 'select' || this.activeTool === 'hand') this.drag(e); });
         $(document).on('mouseup',  ()  => this.endDrag());
 
         // Wheel zoom
@@ -337,6 +337,7 @@ class MobileSVGEditor {
             if (!ctrl && !e.altKey && !e.shiftKey) {
                 switch (key) {
                     case 'v': e.preventDefault(); this.setActiveTool('select');  break;
+                    case 'h': e.preventDefault(); this.setActiveTool('hand');    break;
                     case 'w': e.preventDefault(); this.setActiveTool('wire');    break;
                     case 'l': e.preventDefault(); this.setActiveTool('line');    break;
                     case 'r': e.preventDefault(); this.setActiveTool('rect');    break;

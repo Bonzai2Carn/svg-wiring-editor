@@ -229,14 +229,21 @@ Object.assign(MobileSVGEditor.prototype, {
     // ── Mouse Drag ───────────────────────────────────────────
 
     startDrag(event) {
-        if (this.activeTool !== 'select') return;
+        if (this.activeTool !== 'select' && this.activeTool !== 'hand') return;
         if (this._textEditActive) return;       // text input open — lock camera
-        if (this._isViewportLocked()) return;   // edit-mode: no viewport pan
 
-        const target = event.target;
-        const targetId = target.id || '';
-        const isBackground = targetId === 'svgWrapper' || targetId === '_gridLayer' || targetId === 'svgContainer' || target.tagName.toLowerCase() === 'svg' || target.tagName.toLowerCase() === 'html';
-        if (!isBackground) return;
+        if (this.activeTool === 'select') {
+            if (this._isViewportLocked()) return;   // edit-mode: no viewport pan
+            // Plain background drag now starts a marquee (canvasEngine); panning
+            // requires Space held or middle mouse — Figma/Excalidraw convention.
+            if (!this._spaceHeld && event.button !== 1) return;
+
+            const target = event.target;
+            const targetId = target.id || '';
+            const isBackground = targetId === 'svgWrapper' || targetId === '_gridLayer' || targetId === 'svgContainer' || target.tagName.toLowerCase() === 'svg' || target.tagName.toLowerCase() === 'html';
+            if (!isBackground) return;
+        }
+        // Hand tool: any drag anywhere pans — no background/space requirement.
 
         this.isDragging = true;
         this.dragStart = {
@@ -250,7 +257,8 @@ Object.assign(MobileSVGEditor.prototype, {
     },
 
     drag(event) {
-        if (!this.isDragging || this.activeTool !== 'select') return;
+        if (!this.isDragging) return;
+        if (this.activeTool !== 'select' && this.activeTool !== 'hand') return;
 
         const dX = event.clientX - this.dragStart.x;
         const dY = event.clientY - this.dragStart.y;
@@ -267,7 +275,7 @@ Object.assign(MobileSVGEditor.prototype, {
     endDrag() {
         if (!this.isDragging) return;
         this.isDragging = false;
-        this.$svgContainer.css('cursor', this.activeTool === 'select' ? 'grab' : 'default');
+        this.$svgContainer.css('cursor', this.activeTool === 'hand' ? 'grab' : 'default');
     },
 
     // ── Wheel Zoom at cursor position ────────────────────────

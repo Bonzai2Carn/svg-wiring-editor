@@ -463,6 +463,8 @@ Object.assign(MobileSVGEditor.prototype, {
         const taggedEls = new Set();
         svgEl.querySelectorAll('[data-geo-class]').forEach(el => {
             const cls = el.getAttribute('data-geo-class');
+            // Ink (freehand pen) is decoration — excluded from wire/component analysis
+            if (cls === 'ink') { taggedEls.add(el); return; }
             const score = this._scoreTaggedEl(el);
             if (!score) return;
             taggedEls.add(el);
@@ -755,26 +757,27 @@ Object.assign(MobileSVGEditor.prototype, {
         });
 
         let junctionIdx = 0;
+        const junctionAt = new Map();   // "x,y" → junction id
         epMap.forEach((wireIds, key) => {
             if (wireIds.length >= 3) {
                 const [x, y] = key.split(',').map(Number);
                 const jid = `junction_${junctionIdx++}`;
                 nodes.set(jid, { kind: 'junction', id: jid, x, y, degree: wireIds.length });
                 adjacency.set(jid, []);
+                junctionAt.set(key, jid);
             }
         });
 
-        // Register wire edges and link to component nodes via ports
+        // Register wire edges and link to component/junction nodes.
+        // A wire endpoint resolves to a component (via port match) first,
+        // then a junction dot — so connectivity survives T-junctions.
         wires.forEach(wire => {
             const portMatches = ports.filter(p => p.wireId === wire.id);
-            const fromNode    = portMatches.find(p => {
-                const ep = wire.endpoints[0];
-                return Math.hypot(p.x - ep.x, p.y - ep.y) < 1;
-            })?.compId || null;
-            const toNode      = portMatches.find(p => {
-                const ep = wire.endpoints[1];
-                return Math.hypot(p.x - ep.x, p.y - ep.y) < 1;
-            })?.compId || null;
+            const resolve = (ep) =>
+                portMatches.find(p => Math.hypot(p.x - ep.x, p.y - ep.y) < 1)?.compId ||
+                junctionAt.get(`${ep.x.toFixed(2)},${ep.y.toFixed(2)}`) || null;
+            const fromNode = resolve(wire.endpoints[0]);
+            const toNode   = resolve(wire.endpoints[1]);
 
             edges.set(wire.id, {
                 id: wire.id, from: fromNode, to: toNode,
@@ -782,12 +785,55 @@ Object.assign(MobileSVGEditor.prototype, {
                 signalType: null,
             });
 
-            // Update adjacency
             if (fromNode && toNode && fromNode !== toNode) {
                 adjacency.get(fromNode)?.push(toNode);
                 adjacency.get(toNode)?.push(fromNode);
             }
         });
+
+        this._buildNets(wires, ports);
+    },
+
+    // ── Nets via union-find over canonical endpoints ──────────
+    // Wires that touch (directly or through junction chains) share a net;
+    // components join every net their ports land on. This is what makes
+    // hover-highlighting cover the WHOLE electrically-connected run, not
+    // just the hovered wire's two immediate neighbors.
+    _buildNets(wires, ports) {
+        const parent = new Map();
+        const find = (k) => {
+            while (parent.get(k) !== k) {
+                parent.set(k, parent.get(parent.get(k)));
+                k = parent.get(k);
+            }
+            return k;
+        };
+        const union = (a, b) => {
+            if (!parent.has(a)) parent.set(a, a);
+            if (!parent.has(b)) parent.set(b, b);
+            const ra = find(a), rb = find(b);
+            if (ra !== rb) parent.set(ra, rb);
+        };
+        const key = (p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`;
+
+        wires.forEach(w => union(key(w.endpoints[0]), key(w.endpoints[1])));
+
+        const nets = new Map();   // root key → { id, wireIds, compIds }
+        let netIdx = 0;
+        const netFor = (k) => {
+            if (!parent.has(k)) return null;
+            const root = find(k);
+            if (!nets.has(root)) nets.set(root, { id: `net_${netIdx++}`, wireIds: [], compIds: new Set() });
+            return nets.get(root);
+        };
+
+        wires.forEach(w => {
+            const net = netFor(key(w.endpoints[0]));
+            if (net) { net.wireIds.push(w.id); w.net = net; }
+        });
+        ports.forEach(p => netFor(key(p))?.compIds.add(p.compId));
+
+        this.graph.nets = [...nets.values()];
     },
 
     // ==========================================================
@@ -998,22 +1044,21 @@ Object.assign(MobileSVGEditor.prototype, {
         const wire  = this.wires.find(w => w.element === el || w.$hitbox?.[0] === el);
         if (!wire) return;
 
-        // Look up the edge in the graph
-        const edge  = this.graph.edges.get(wire.id);
-        if (!edge) return;
-
-        const highlight = (nodeId) => {
+        const highlightComp = (nodeId) => {
             if (!nodeId) return;
             const comp = this.components.find(c => c.id === nodeId);
             comp?.$element?.addClass('component-highlight');
         };
 
-        highlight(edge.from);
-        highlight(edge.to);
-
-        // Also highlight by adjacency list (for junction-connected comps)
-        const adj = this.graph.adjacency.get(edge.from) || [];
-        adj.forEach(nid => highlight(nid));
+        // Whole-net highlight: every wire and component electrically connected
+        // to the hovered wire (transitively, through junctions) lights up.
+        const net = wire.net;
+        if (!net) return;
+        net.wireIds.forEach(wid => {
+            const w = this.wires.find(x => x.id === wid);
+            w?.$element?.addClass('wire-trace');
+        });
+        net.compIds.forEach(highlightComp);
 
         // Highlight connector pin-points near the wire's endpoints (logic lives in highlights.js)
         this.highlightWireEndpoints?.(wire);

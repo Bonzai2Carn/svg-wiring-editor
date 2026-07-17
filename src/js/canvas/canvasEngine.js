@@ -852,13 +852,14 @@ Object.assign(MobileSVGEditor.prototype, {
                         .map(m => ({ x: parseFloat(m[2]), y: parseFloat(m[3]) }));
                     if (pts.length < 2) return;
 
+                    const translatedD = () => pts.map((p, k) =>
+                        `${k === 0 ? 'M' : 'L'} ${p.x + snapped.x} ${p.y + snapped.y}`
+                    ).join(' ');
+
                     if (!fromPt && !toPt) {
                         // Fully free wire: offset every point by the drag delta,
                         // preserving multi-segment geometry.
-                        const newD = pts.map((p, k) =>
-                            `${k === 0 ? 'M' : 'L'} ${p.x + snapped.x} ${p.y + snapped.y}`
-                        ).join(' ');
-                        el.setAttribute('d', newD);
+                        el.setAttribute('d', translatedD());
                     } else {
                         // One or both endpoints anchored.
                         // Anchored end = component pin position (current, live).
@@ -869,15 +870,25 @@ Object.assign(MobileSVGEditor.prototype, {
                             || { x: pts[pts.length - 1].x + snapped.x,
                                  y: pts[pts.length - 1].y + snapped.y };
 
+                        const selIds = new Set(this._selection.map(s => s.id));
                         if (fromPt && toPt) {
-                            // Both anchored: route from-pin → cursor → to-pin so drag
-                            // controls the bend rather than locking the wire in place.
-                            const segs = [`M ${fp.x} ${fp.y}`];
-                            if (Math.abs(fp.y - svgNow.y) > 0.5) segs.push(`L ${fp.x} ${svgNow.y}`);
-                            segs.push(`L ${svgNow.x} ${svgNow.y}`);
-                            if (Math.abs(svgNow.y - tp.y) > 0.5) segs.push(`L ${svgNow.x} ${tp.y}`);
-                            segs.push(`L ${tp.x} ${tp.y}`);
-                            el.setAttribute('d', segs.join(' '));
+                            if (selIds.has(fromSym) && selIds.has(toSym)) {
+                                // Whole assembly (wire + both symbols) moves together:
+                                // preserve the wire's shape, just translate it.
+                                el.setAttribute('d', translatedD());
+                            } else if (!selIds.has(fromSym) && !selIds.has(toSym)) {
+                                // Wire dragged alone between two fixed components:
+                                // route from-pin → cursor → to-pin so drag controls the bend.
+                                const segs = [`M ${fp.x} ${fp.y}`];
+                                if (Math.abs(fp.y - svgNow.y) > 0.5) segs.push(`L ${fp.x} ${svgNow.y}`);
+                                segs.push(`L ${svgNow.x} ${svgNow.y}`);
+                                if (Math.abs(svgNow.y - tp.y) > 0.5) segs.push(`L ${svgNow.x} ${tp.y}`);
+                                segs.push(`L ${tp.x} ${tp.y}`);
+                                el.setAttribute('d', segs.join(' '));
+                            } else {
+                                // One symbol moving, one fixed: clean pin-to-pin re-route.
+                                el.setAttribute('d', this._smartRoute(fromPt, toPt));
+                            }
                         } else {
                             el.setAttribute('d', this._smartRoute(fp, tp));
                         }
@@ -1615,6 +1626,20 @@ Object.assign(MobileSVGEditor.prototype, {
     },
 
     _bindCanvasEvents() {
+        // Double-click inside a grouped symbol → select the individual child
+        // (single click selects the whole group; Figma/draw.io convention)
+        this.$svgDisplay.on('dblclick.canvas', (e) => {
+            if (this.activeTool !== 'select') return;
+            const sym = e.target.closest?.('.domain-symbol');
+            if (!sym || e.target === sym) return;
+            if (e.target.classList.contains('component-hitbox')) return;
+            e.preventDefault();
+            e.stopPropagation();
+            this.deselectAll();
+            this.selectEl(e.target);
+            this.showToast('Element inside group selected — click canvas to exit', 'success');
+        });
+
         // Cursor update on hover — changes to resize/rotate cursor over overlay handles
         this.$svgDisplay.on('mousemove.canvasCursor', (e) => {
             if (this.activeTool !== 'select' || !this._useCanvasHandles) return;
@@ -1647,8 +1672,10 @@ Object.assign(MobileSVGEditor.prototype, {
                 target.classList.contains('draw-preview') ||
                 target.closest('.selection-handle-group');
 
-            // Ctrl/Meta + drag on background → marquee selection
-            if (isIgnored && !target.closest('.selection-handle-group') && (e.ctrlKey || e.metaKey)) {
+            // Plain drag on background → marquee selection (Excalidraw/Figma convention;
+            // Ctrl/Meta+drag still works as an alias). Space+drag / middle-mouse pans.
+            if (isIgnored && !target.closest('.selection-handle-group') &&
+                e.button === 0 && !this._spaceHeld) {
                 e.preventDefault();
                 e.stopPropagation();
                 this._startMarquee(e);

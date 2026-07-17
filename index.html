@@ -331,6 +331,12 @@
                     <span class="panel-content">Select</span>
                 </button>
 
+                <!-- Hand (pan) -->
+                <button class="btn draw-tool-btn" id="tool_hand" data-tool="hand" title="Hand – pan the canvas (H)">
+                    <iconify-icon icon="material-symbols:back-hand-outline"></iconify-icon>
+                    <span class="panel-content">Hand</span>
+                </button>
+
                 <!-- Draw separator label -->
                 <span class="toolbar-sep">Draw</span>
 
@@ -914,6 +920,10 @@
             // CWS IPC: receive back-annotation from TAFNE (no-op when OS bridge absent)
             if (window.CwsBridge) {
                 CwsBridge.onData(function (envelope) {
+                    if (envelope?.contentType === 'svg-vector') {
+                        window.editor.receiveSvgVector(envelope);
+                        return;
+                    }
                     if (envelope?.hints?.action !== 'back-annotate') return;
                     window.editor.receiveBackAnnotation(envelope);
                 });

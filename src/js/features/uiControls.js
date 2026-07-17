@@ -528,6 +528,27 @@ ${svgData}
         });
     },
 
+    // CWS inbound: svg-vector envelope (e.g. pdf-processor's CTM-resolved vector
+    // extraction). Fetch, validate, mount through the normal import path so the
+    // geometry pipeline (classify → topology → nets) runs on it.
+    async receiveSvgVector(envelope) {
+        let svg;
+        try {
+            svg = envelope.pointer
+                ? await CwsBridge.getStore(envelope.pointer)
+                : envelope.inline;
+        } catch (e) {
+            this.showToast('Vector import: could not fetch data', 'error');
+            return;
+        }
+        const validate = window.CwsContracts?.VALIDATORS?.['svg-vector'];
+        if (validate && !validate(svg)) {
+            this.showToast('Vector import: invalid SVG payload', 'error');
+            return;
+        }
+        this._mountParsedSvg(svg, `Imported: ${envelope.metadata?.name || 'vector document'}`);
+    },
+
     async receiveBackAnnotation(envelope) {
         let raw;
         try {

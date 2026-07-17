@@ -20,7 +20,70 @@ Object.assign(MobileSVGEditor.prototype, {
             strokeDasharray: 'none',
         };
 
+        // Wire endpoint styles (draw.io-style relational endpoints)
+        this._wireEndStyle = { start: 'none', end: 'none' };
+
         this._bindDrawEvents();
+        this._bindPenPointerEvents();
+    },
+
+    // ── Wire endpoint markers ─────────────────────────────────
+    _WIRE_END_STYLES: ['none', 'arrow', 'triangle', 'diamond', 'circle', 'many'],
+
+    _ensureWireMarkers() {
+        const svg = this.$svgDisplay[0];
+        if (svg.querySelector('#_gxWireMarkers')) return;
+        const defs = document.createElementNS(this.SVG_NS, 'defs');
+        defs.id = '_gxWireMarkers';
+        defs.dataset.seSystem = 'true';
+        // context-stroke inherits the wire's stroke color (falls back to #666)
+        const shapes = {
+            arrow:    '<path d="M0,0 L8,4 L0,8" fill="none" stroke="context-stroke"/>',
+            triangle: '<path d="M0,0 L8,4 L0,8 Z" fill="context-stroke"/>',
+            diamond:  '<path d="M0,4 L4,0 L8,4 L4,8 Z" fill="context-stroke"/>',
+            circle:   '<circle cx="4" cy="4" r="3" fill="context-stroke"/>',
+            many:     '<path d="M8,0 L0,4 L8,8 M0,4 L8,4" fill="none" stroke="context-stroke"/>',
+        };
+        defs.innerHTML = Object.entries(shapes).map(([k, body]) =>
+            `<marker id="gxw-${k}" viewBox="0 0 8 8" refX="7" refY="4" ` +
+            `markerWidth="8" markerHeight="8" orient="auto-start-reverse" ` +
+            `markerUnits="strokeWidth">${body}</marker>`
+        ).join('');
+        svg.insertBefore(defs, svg.firstChild);
+    },
+
+    _applyWireEndMarkers(el) {
+        const { start, end } = this._wireEndStyle;
+        if (start === 'none' && end === 'none') return;
+        this._ensureWireMarkers();
+        if (start !== 'none') el.setAttribute('marker-start', `url(#gxw-${start})`);
+        if (end   !== 'none') el.setAttribute('marker-end',   `url(#gxw-${end})`);
+    },
+
+    // Small floating picker shown only while the wire tool is active
+    _toggleWireStyleBar(show) {
+        let bar = document.getElementById('gxWireStyleBar');
+        if (!show) { bar?.remove(); return; }
+        if (bar) return;
+        bar = document.createElement('div');
+        bar.id = 'gxWireStyleBar';
+        const labels = { none: '— none', arrow: '→ arrow', triangle: '▶ triangle',
+                         diamond: '◆ diamond', circle: '● circle', many: '⑃ many (crow\'s foot)' };
+        const opts = this._WIRE_END_STYLES.map(s => `<option value="${s}">${labels[s]}</option>`).join('');
+        bar.innerHTML =
+            `<label>Start <select data-endpoint="start">${opts}</select></label>` +
+            `<label>End <select data-endpoint="end">${opts}</select></label>`;
+        bar.style.cssText =
+            'position:fixed;bottom:64px;left:50%;transform:translateX(-50%);display:flex;gap:12px;' +
+            'padding:6px 12px;background:rgba(20,24,32,.92);color:#dfe6ee;' +
+            'border:1px solid rgba(255,255,255,.14);border-radius:8px;font-size:12px;z-index:900;';
+        bar.querySelectorAll('select').forEach(sel => {
+            sel.value = this._wireEndStyle[sel.dataset.endpoint];
+            sel.addEventListener('change', () => {
+                this._wireEndStyle[sel.dataset.endpoint] = sel.value;
+            });
+        });
+        document.body.appendChild(bar);
     },
 
     setActiveTool(tool) {
@@ -33,6 +96,7 @@ Object.assign(MobileSVGEditor.prototype, {
         // Cursor
         const cursors = {
             select: 'default',
+            hand: 'grab',
             pen: 'crosshair',
             line: 'crosshair',
             rect: 'crosshair',
@@ -48,18 +112,22 @@ Object.assign(MobileSVGEditor.prototype, {
             this._cancelDraw();
         }
 
-        // Toggle select-mode canvas listener
-        if (tool === 'select') {
-            this.$svgContainer.css('cursor', 'default');
-        }
+        // Wire endpoint style bar only shows while the wire tool is active
+        this._toggleWireStyleBar?.(tool === 'wire');
 
-        this.showToast(
-            {
-                select: 'Select', pen: 'Pen', line: 'Line', rect: 'Rectangle',
-                ellipse: 'Ellipse', polygon: 'Polygon', text: 'Text', wire: 'Wire'
-            }[tool] + ' tool',
-            'success'
-        );
+        // Quick usage hint per tool (Excalidraw-style)
+        const hints = {
+            select:  'Select — click an item, drag empty canvas to marquee, dbl-click enters a group. Space+drag pans',
+            hand:    'Hand — drag anywhere to pan the canvas (H)',
+            pen:     'Pen — draw freehand; strokes smooth on release. Esc cancels',
+            line:    'Line — drag from start to end; snaps to grid and edges',
+            rect:    'Rectangle — drag a corner to the opposite corner',
+            ellipse: 'Ellipse — drag from center outward',
+            polygon: 'Polygon — click each vertex, double-click to close',
+            text:    'Text — click to place, then type in the panel',
+            wire:    'Wire — click waypoints, dbl-click/Enter commits, Esc cancels. Pick endpoint style below',
+        };
+        this.showToast(hints[tool] || tool, 'success');
     },
 
     // ── Main draw event binding ───────────────────────────────
@@ -67,6 +135,7 @@ Object.assign(MobileSVGEditor.prototype, {
         this.$svgContainer.on('mousedown.draw', (e) => {
             const drawTools = ['pen', 'line', 'rect', 'ellipse', 'polygon', 'text', 'wire'];
             if (!drawTools.includes(this.activeTool)) return;
+            if (this.activeTool === 'pen') return;   // pen uses pointer events (capture + coalescing)
             if (e.button !== 0) return;
             e.preventDefault();
             e.stopPropagation();
@@ -75,7 +144,6 @@ Object.assign(MobileSVGEditor.prototype, {
             const snapped = this.smartSnap(pt.x, pt.y);
 
             switch (this.activeTool) {
-                case 'pen': this._penStart(snapped, e); break;
                 case 'line': this._lineStart(snapped); break;
                 case 'rect': this._rectStart(snapped); break;
                 case 'ellipse': this._ellipseStart(snapped); break;
@@ -91,7 +159,6 @@ Object.assign(MobileSVGEditor.prototype, {
             const snapped = this.smartSnap(pt.x, pt.y);
 
             switch (this.activeTool) {
-                case 'pen': this._penMove(snapped, e); break;
                 case 'line': this._lineMove(snapped); break;
                 case 'rect': this._rectMove(snapped); break;
                 case 'ellipse': this._ellipseMove(snapped); break;
@@ -103,7 +170,6 @@ Object.assign(MobileSVGEditor.prototype, {
             if (!this._drawState) return;
 
             switch (this.activeTool) {
-                case 'pen': this._penEnd(); break;
                 case 'line': this._lineEnd(); break;
                 case 'rect': this._rectEnd(); break;
                 case 'ellipse': this._ellipseEnd(); break;
@@ -164,9 +230,12 @@ Object.assign(MobileSVGEditor.prototype, {
         // Assign unique id
         el.id = `el_${Date.now()}_${Math.floor(Math.random() * 9999)}`;
         this._applyDrawStyle(el);
-        // Tag lines/wires as geo wires in electrical mode for live GeoEngine analysis
-        if (this.activeMode === 'electrical') {
-            const wireTools = new Set(['pen', 'line', 'wire']);
+        // Tag lines/wires as geo wires in electrical mode for live GeoEngine analysis.
+        // Pen strokes are ink — never wires/components — so doodles can't pollute the netlist.
+        if (this.activeTool === 'pen') {
+            el.setAttribute('data-geo-class', 'ink');
+        } else if (this.activeMode === 'electrical') {
+            const wireTools = new Set(['line', 'wire']);
             el.setAttribute('data-geo-class', wireTools.has(this.activeTool) ? 'wire' : 'component');
         }
         this._contentRoot.appendChild(el);
@@ -184,47 +253,114 @@ Object.assign(MobileSVGEditor.prototype, {
         this._drawPreview?.remove();
         this._drawPreview = null;
         this._drawState = null;
+        this._penStroke = null;
     },
 
     // ── PEN (freehand) ────────────────────────────────────────
-    _penStart(pt, e) {
-        this._drawState = {
-            before: this._captureFullState(),
-            points: [pt],
+    // Pointer events (not mouse): setPointerCapture keeps the stroke alive
+    // when the cursor leaves the container, getCoalescedEvents gives full-rate
+    // sampling on high-Hz input. Points are NEVER grid-snapped mid-stroke;
+    // on commit the stroke is RDP-simplified then rendered as a true
+    // Catmull-Rom spline (cubic beziers), so freehand no longer staircases.
+    _bindPenPointerEvents() {
+        const container = this.$svgContainer[0];
+        this._penStroke = null;
+
+        container.addEventListener('pointerdown', (e) => {
+            if (this.activeTool !== 'pen') return;
+            if (e.pointerType === 'mouse' && e.button !== 0) return;
+            e.preventDefault();
+            e.stopPropagation();
+            try { container.setPointerCapture(e.pointerId); } catch (_) {}
+            container.style.touchAction = 'none';
+
+            const pt = this.screenToSVG(e.clientX, e.clientY);
+            this._penStroke = {
+                pointerId: e.pointerId,
+                before: this._captureFullState(),
+                points: [pt],
+                minDist: 0.75 / (this.zoom || 1),
+            };
+            this._drawState = this._penStroke;   // lets Escape (_cancelDraw) abort the stroke
+            const el = this._makePreview('path');
+            el.setAttribute('d', `M ${pt.x} ${pt.y}`);
+        });
+
+        container.addEventListener('pointermove', (e) => {
+            const s = this._penStroke;
+            if (!s || e.pointerId !== s.pointerId || !this._drawState) return;
+            const events = e.getCoalescedEvents?.() || [e];
+            let added = false;
+            for (const ev of events) {
+                const pt = this.screenToSVG(ev.clientX, ev.clientY);
+                const last = s.points[s.points.length - 1];
+                if (Math.hypot(pt.x - last.x, pt.y - last.y) < s.minDist) continue;
+                s.points.push(pt);
+                added = true;
+            }
+            if (added && this._drawPreview) {
+                this._drawPreview.setAttribute('d', this._catmullRomPath(s.points));
+            }
+        });
+
+        const finish = (e) => {
+            const s = this._penStroke;
+            if (!s || e.pointerId !== s.pointerId) return;
+            try { container.releasePointerCapture(e.pointerId); } catch (_) {}
+            container.style.touchAction = '';
+            this._penStroke = null;
+            if (!this._drawState || s.points.length < 2) { this._cancelDraw(); return; }
+
+            const simplified = this._rdpSimplify(s.points, s.minDist);
+            const el = document.createElementNS(this.SVG_NS, 'path');
+            el.setAttribute('d', this._catmullRomPath(simplified));
+            el.setAttribute('data-ink', 'true');
+            this._commitElement(el);
         };
-        const el = this._makePreview('path');
-        el.setAttribute('d', `M ${pt.x} ${pt.y}`);
+        container.addEventListener('pointerup', finish);
+        container.addEventListener('pointercancel', finish);
     },
 
-    _penMove(pt) {
-        if (!this._drawState) return;
-        this._drawState.points.push(pt);
-        // Smooth curve through all points using Catmull-Rom
-        const d = this._pointsToCurve(this._drawState.points);
-        this._drawPreview.setAttribute('d', d);
-    },
-
-    _penEnd() {
-        if (!this._drawState || this._drawState.points.length < 2) {
-            this._cancelDraw(); return;
+    // Ramer–Douglas–Peucker simplification (iterative, stack-based).
+    _rdpSimplify(pts, eps) {
+        if (pts.length < 3) return pts;
+        const keep = new Uint8Array(pts.length);
+        keep[0] = keep[pts.length - 1] = 1;
+        const stack = [[0, pts.length - 1]];
+        while (stack.length) {
+            const [a, b] = stack.pop();
+            const A = pts[a], B = pts[b];
+            const dx = B.x - A.x, dy = B.y - A.y;
+            const len = Math.hypot(dx, dy) || 1e-9;
+            let maxDist = 0, maxIdx = -1;
+            for (let i = a + 1; i < b; i++) {
+                const d = Math.abs(dy * (pts[i].x - A.x) - dx * (pts[i].y - A.y)) / len;
+                if (d > maxDist) { maxDist = d; maxIdx = i; }
+            }
+            if (maxDist > eps && maxIdx > 0) {
+                keep[maxIdx] = 1;
+                stack.push([a, maxIdx], [maxIdx, b]);
+            }
         }
-        const el = document.createElementNS(this.SVG_NS, 'path');
-        el.setAttribute('d', this._pointsToCurve(this._drawState.points));
-        this._commitElement(el);
+        return pts.filter((_, i) => keep[i]);
     },
 
-    _pointsToCurve(pts) {
-        if (pts.length < 2) return `M ${pts[0].x} ${pts[0].y}`;
-        let d = `M ${pts[0].x} ${pts[0].y}`;
-        for (let i = 1; i < pts.length - 1; i++) {
-            const cp1x = pts[i].x;
-            const cp1y = pts[i].y;
-            const x = (pts[i].x + pts[i + 1].x) / 2;
-            const y = (pts[i].y + pts[i + 1].y) / 2;
-            d += ` Q ${cp1x} ${cp1y} ${x} ${y}`;
+    // Catmull-Rom spline through all points, emitted as cubic beziers.
+    _catmullRomPath(pts) {
+        if (!pts.length) return '';
+        const r = (n) => Math.round(n * 100) / 100;
+        if (pts.length === 1) return `M ${r(pts[0].x)} ${r(pts[0].y)}`;
+        if (pts.length === 2) return `M ${r(pts[0].x)} ${r(pts[0].y)} L ${r(pts[1].x)} ${r(pts[1].y)}`;
+        let d = `M ${r(pts[0].x)} ${r(pts[0].y)}`;
+        for (let i = 0; i < pts.length - 1; i++) {
+            const p0 = pts[i - 1] || pts[i];
+            const p1 = pts[i];
+            const p2 = pts[i + 1];
+            const p3 = pts[i + 2] || p2;
+            d += ` C ${r(p1.x + (p2.x - p0.x) / 6)} ${r(p1.y + (p2.y - p0.y) / 6)}`
+               + ` ${r(p2.x - (p3.x - p1.x) / 6)} ${r(p2.y - (p3.y - p1.y) / 6)}`
+               + ` ${r(p2.x)} ${r(p2.y)}`;
         }
-        const last = pts[pts.length - 1];
-        d += ` L ${last.x} ${last.y}`;
         return d;
     },
 
@@ -444,6 +580,7 @@ Object.assign(MobileSVGEditor.prototype, {
         const el = document.createElementNS(this.SVG_NS, 'path');
         el.setAttribute('d', d);
         el.setAttribute('fill', 'none');
+        this._applyWireEndMarkers(el);
 
         // Store pin-connection metadata so wires can follow symbols when dragged
         if (pinFrom?.symId) {
@@ -487,7 +624,8 @@ Object.assign(MobileSVGEditor.prototype, {
     // at the current zoom so snap radius feels constant regardless of zoom level).
     // Side-effect: sets this._lastSnappedPin to the matched DOM element (or null).
     _wireSnapToPort(pt) {
-        const THRESHOLD = 16 / (this.zoom || 1);
+        // Clamp so the radius can't balloon into a huge world-space area at low zoom
+        const THRESHOLD = Math.min(16 / (this.zoom || 1), 32);
         let best = null, bestDist = THRESHOLD, bestPin = null;
         this._contentRoot?.querySelectorAll('.pin-point').forEach(pin => {
             const cx = parseFloat(pin.getAttribute('cx') || 0);
