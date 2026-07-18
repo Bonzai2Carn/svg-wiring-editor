@@ -15,6 +15,30 @@ pruning rule:
 
 ## Session Handoff
 
+last_file: src/js/core/geometryEngine.js
+active_task: Interactivity overhaul complete + browser-verified (2026-07-17). Shipping as extension 0.1.5.
+branch_state: uncommitted changes (geometryEngine, canvasEngine, drawingTools, ercEngine, history, svgEditor, svgEditorUI.css, index.html + electrical/general/floorplan pages)
+
+## What happened this session (2026-07-17 — Interactivity overhaul, live-verified)
+
+1. **Live electrical graph fixed** (`geometryEngine.js`): placed symbols keep translate/rotate transforms, but `_scoreTaggedEl` measured bboxes with local-space `getBBox()` while wire endpoints are document-space — port discovery never matched (ERC said "0/2 pins connected" on correct circuits; imports worked because they're flattened). Added `_elWorldMatrix()` (consolidated transform walk, stops below `_cameraRotGroup`), world-projected symbol bboxes, and pin-accurate port matching (`.pin-point` world positions, tol 8, records `pinId`; bbox inference kept for pinless imports).
+
+2. **Analysis tracks every edit** (`history.js`): `pushHistory` calls `_scheduleGeoAnalysis()` (debounced 600ms, electrical-only, defers while `_moveActive`/`_drawState`/`_marqueeState`/`_resizeState`/`_rotateState`). Covers draw/move/delete/paste/rotate/group without per-feature wiring. `_createWireHitboxes` remaps `_selection` when it swaps a selected wire's node.
+
+3. **Stamp placement + refdes** (`domainManager.js`, main-repo assets): palette click arms cursor-ghost stamping (capture-phase listeners; R rotates, Esc/right-click ends; grid-snapped origins). Electrical placements get `data-refdes` R1/C2/D3 via `_REFDES_PREFIX` + `_nextRefdes()`; ERC findings and BOM (panel + CSV Refs column) use them. `registerDomainKit` re-renders the palette if its mode is already active (fixes 150ms-mode-apply vs 200ms-kit-registration race).
+
+4. **Wiring UX** (`drawingTools.js`): wire auto-commits when a click lands on a pin; degenerate zero-span wires cancelled; endpoint style picker moved to bottom:118px (was colliding with hint toasts). Hover on a wire hitbox now lights the whole net (`canvasEngine.js` mouseenter/mouseleave.net).
+
+5. **Selection/hit-testing**: closed user shapes (rect/ellipse/circle/polygon `el_*`) get `pointer-events: all` (CSS) so interiors are clickable; open paths keep stroke-only hits. Marquee skips `.wire-hitbox`/`.component-hitbox`/wrapper groups. `rotateSelected(90)`/`flipSelected('h')` on Shift+R/Shift+F; lone domain-symbol pivots on its own origin (consolidated matrix e/f).
+
+6. **First-run + mode pages**: Edit tab open by default; `#canvasFirstRunHint` retired by a MutationObserver in history.js when content appears. electrical/general/floorplan pages (full duplicates of root index.html) were missing ALL ERC work — ported ercBtn + component-specs/ctmAdapter/ercEngine scripts, hint, Edit-default; added path-derived `__GINEXYS_INITIAL_MODE__` (folder name = mode, floorplan→construction). ERC icon fixed (`material-symbols:fact-check-outline`).
+
+**Verified in fresh browser**: stamp → wire → ERC shows true 1/2-pin errors with refdes names; BOM "2× R1 R2 resistor 10kΩ"; hover net glow; Shift+R pivots on origin; interior click selects.
+
+**Known debt**: phantom pin-records inflate net compIds (noise); mode pages remain full duplicates until iframe shells; user-shape resize still scale-transform based.
+
+## Session Handoff
+
 last_file: tools/schema-editor/src/js/canvas/snapGrid.js
 active_task: Canvas interaction hardening (marquee, group-select, system node protection)
 branch_state: uncommitted changes (10+ files modified)

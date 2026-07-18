@@ -473,12 +473,12 @@ Object.assign(MobileSVGEditor.prototype, {
 
             // Register pin-point circles as connector endpoints in world space
             if (cls !== 'wire' && el.tagName?.toLowerCase() === 'g') {
-                const m = (el.getAttribute('transform') || '').match(/translate\(\s*([-\d.]+)[,\s]+([-\d.]+)/);
-                const tx = m ? parseFloat(m[1]) : 0;
-                const ty = m ? parseFloat(m[2]) : 0;
+                const wm = this._elWorldMatrix(el);
                 el.querySelectorAll('.pin-point').forEach(pinEl => {
-                    const cx = parseFloat(pinEl.getAttribute('cx') || 0) + tx;
-                    const cy = parseFloat(pinEl.getAttribute('cy') || 0) + ty;
+                    const wp = new DOMPoint(
+                        parseFloat(pinEl.getAttribute('cx') || 0),
+                        parseFloat(pinEl.getAttribute('cy') || 0)).matrixTransform(wm);
+                    const cx = wp.x, cy = wp.y;
                     const r  = parseFloat(pinEl.getAttribute('r')  || 2);
                     compEls.push({ el: pinEl, score: {
                         bbox: { x: cx - r, y: cy - r, width: r * 2, height: r * 2 },
@@ -524,6 +524,23 @@ Object.assign(MobileSVGEditor.prototype, {
         return { wireEls, compEls };
     },
 
+    /** Consolidated transform matrix from el's local space to document space
+     *  (stops at the camera group so camera pan/zoom never leaks in). */
+    _elWorldMatrix(el) {
+        let m = new DOMMatrix();
+        let node = el;
+        const svg = this.$svgDisplay?.[0];
+        while (node && node !== svg && node.id !== '_cameraRotGroup') {
+            const tv = node.transform?.baseVal;
+            if (tv?.length) {
+                const lm = tv.consolidate()?.matrix;
+                if (lm) m = new DOMMatrix([lm.a, lm.b, lm.c, lm.d, lm.e, lm.f]).multiply(m);
+            }
+            node = node.parentElement;
+        }
+        return m;
+    },
+
     /** Score an element that carries data-geo-class — uses getBBox for <g> groups. */
     _scoreTaggedEl(el) {
         const tag = el.tagName?.toLowerCase();
@@ -532,7 +549,18 @@ Object.assign(MobileSVGEditor.prototype, {
             let b;
             try { b = this._getVisualBBox(el); } catch (_) { return null; }
             if (!b.width && !b.height) return null;
-            const bbox = { x: b.x, y: b.y, width: b.width, height: b.height };
+            // Placed symbols keep their translate/rotate transform, so the local
+            // getBBox must be projected to document space — wire endpoints live
+            // there, and port discovery compares the two directly.
+            const wm = this._elWorldMatrix(el);
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            [[b.x, b.y], [b.x + b.width, b.y], [b.x, b.y + b.height],
+             [b.x + b.width, b.y + b.height]].forEach(([px, py]) => {
+                const tp = new DOMPoint(px, py).matrixTransform(wm);
+                minX = Math.min(minX, tp.x); minY = Math.min(minY, tp.y);
+                maxX = Math.max(maxX, tp.x); maxY = Math.max(maxY, tp.y);
+            });
+            const bbox = { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
             return {
                 bbox,
                 aspect:      Math.max(b.width, b.height) / (Math.min(b.width, b.height) || 1),
@@ -540,7 +568,7 @@ Object.assign(MobileSVGEditor.prototype, {
                 circularity: cls === 'wire' ? 0.0 : 1.0,
                 pathLen: 0, span: 0,
                 pts: cls === 'wire'
-                    ? [b.x, b.y, b.x + b.width, b.y + b.height]
+                    ? [bbox.x, bbox.y, bbox.x + bbox.width, bbox.y + bbox.height]
                     : [],
             };
         }
@@ -710,20 +738,46 @@ Object.assign(MobileSVGEditor.prototype, {
             ports:       [],
         }));
 
-        // Port discovery: wire endpoints near component perimeters
+        // Port discovery. Two tiers:
+        //  1. Placed symbols expose .pin-point circles — a wire endpoint within
+        //     PIN_TOL of a pin's world position is a connection to THAT pin.
+        //     This is electrically exact (bbox proximity would count a wire
+        //     touching the symbol body as "connected").
+        //  2. Analyzed/imported components have no pin metadata — fall back to
+        //     the bbox inference zone.
         const ports = [];
-        const MARGIN = eps * 3;
+        const MARGIN  = eps * 3;
+        const PIN_TOL = 8;   // matches _runLintPass — absorbs snap imprecision
+
+        const compPins = components.map(comp => {
+            const g = comp.el;
+            if (g?.tagName?.toLowerCase() !== 'g' || !g.classList?.contains('domain-symbol')) return null;
+            const wm = this._elWorldMatrix(g);
+            return [...g.querySelectorAll('.pin-point')].map((pinEl, i) => {
+                const wp = new DOMPoint(
+                    parseFloat(pinEl.getAttribute('cx') || 0),
+                    parseFloat(pinEl.getAttribute('cy') || 0)).matrixTransform(wm);
+                return { pinId: pinEl.dataset.pin ?? String(i), x: wp.x, y: wp.y };
+            });
+        });
+
         wires.forEach(wire => {
             wire.endpoints.forEach(ep => {
-                components.forEach(comp => {
-                    const b = comp.bbox;
-                    // Expand bbox by MARGIN = "inference zone"
-                    if (ep.x >= b.x - MARGIN && ep.x <= b.x + b.width  + MARGIN &&
-                        ep.y >= b.y - MARGIN && ep.y <= b.y + b.height + MARGIN) {
-                        const port = { compId: comp.id, wireId: wire.id, x: ep.x, y: ep.y };
-                        comp.ports.push(port);
-                        ports.push(port);
+                components.forEach((comp, ci) => {
+                    const pins = compPins[ci];
+                    let port = null;
+                    if (pins?.length) {
+                        const hit = pins.find(p => Math.hypot(p.x - ep.x, p.y - ep.y) <= PIN_TOL);
+                        if (hit) port = { compId: comp.id, wireId: wire.id, x: ep.x, y: ep.y, pinId: hit.pinId };
+                    } else {
+                        const b = comp.bbox;
+                        // Expand bbox by MARGIN = "inference zone"
+                        if (ep.x >= b.x - MARGIN && ep.x <= b.x + b.width  + MARGIN &&
+                            ep.y >= b.y - MARGIN && ep.y <= b.y + b.height + MARGIN) {
+                            port = { compId: comp.id, wireId: wire.id, x: ep.x, y: ep.y };
+                        }
                     }
+                    if (port) { comp.ports.push(port); ports.push(port); }
                 });
             });
         });
@@ -868,6 +922,11 @@ Object.assign(MobileSVGEditor.prototype, {
             wire.$element = $(visual);
             wire.$hitbox  = $(hitbox);
             wire.$group   = $(group);
+
+            // A selected wire just had its DOM node swapped for the clone —
+            // remap the selection so overlay handles keep tracking it.
+            const selIdx = this._selection?.indexOf(el);
+            if (selIdx >= 0) this._selection[selIdx] = visual;
 
             this.wires.push(wire);
         });

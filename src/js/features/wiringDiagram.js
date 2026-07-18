@@ -189,7 +189,31 @@ Object.assign(MobileSVGEditor.prototype, {
                         const page = await pdf.getPage(i);
                         const viewport = page.getViewport({ scale: 1.0 }); // Native units
                         const opList = await page.getOperatorList();
-                        
+
+                        // ── Primary path: CTM-resolved vector extraction ──
+                        // Deterministic primitives (lines/curves/rects) with the full
+                        // transform chain applied; text glyphs never enter the output.
+                        if (window.GxCtmAdapter && pdfjsLib.OPS) {
+                            try {
+                                const extracted = GxCtmAdapter.extractSubpaths(opList, viewport, pdfjsLib.OPS);
+                                const hasContent = extracted.subpaths.some(sp => sp.segs.length || sp.curves.length)
+                                    || extracted.filledRects.length;
+                                if (hasContent) {
+                                    pages.push({
+                                        name: numPages > 1 ? `${file.name} - P${i}` : file.name,
+                                        svgContent: GxCtmAdapter.subpathsToSvg(extracted, viewport),
+                                        sourceFormat: sourceExt,
+                                    });
+                                    continue;
+                                }
+                                // No vector content — fall through to SVGGraphics
+                                // (page may be raster-only; renderer at least shows it)
+                            } catch (adapterErr) {
+                                console.warn(`[PDF] ctmAdapter failed on P${i}, falling back:`, adapterErr);
+                            }
+                        }
+
+                        // ── Fallback: legacy SVGGraphics renderer ──
                         // SANITIZE: Remove shading ops which crash the experimental SVG renderer
                         if (pdfjsLib.OPS && pdfjsLib.OPS.shadingFill !== undefined) {
                             const bypassOps = [ pdfjsLib.OPS.shadingFill ];

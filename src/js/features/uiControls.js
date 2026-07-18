@@ -528,6 +528,40 @@ ${svgData}
         });
     },
 
+    // Generic tables → TAFNE send (gx-tables-v1). tables = [{ name, rows: [{...}] }]
+    // Reuses the netlist pipeline's probe/launch plumbing; standalone → JSON download.
+    async sendTablesToTafne(tables, title = 'tables') {
+        if (!tables?.length || !tables.some(t => t.rows?.length)) {
+            this.showToast('Nothing to send', 'error');
+            return;
+        }
+        const payload = { schema: 'gx-tables-v1', tables, meta: { source: 'schema-editor', title } };
+
+        if (!CwsBridge.isEmbedded) {
+            this._triggerDownload(JSON.stringify(payload, null, 2),
+                `${title}.json`, 'application/json');
+            this.showToast('Saved JSON (not in OS shell)', 'success');
+            return;
+        }
+        try {
+            const running = await this._cwsProbeTafne(3500);
+            if (!running) {
+                CwsBridge.send('cws:tool:launch', { toolId: 'tifany', focusAfterLaunch: true }, 'os');
+                await this._cwsWaitForToolLaunch('tifany', 12000);
+            }
+            const pointerId = await CwsBridge.requestStore(JSON.stringify(payload), 'json-data');
+            CwsBridge.offerData(CwsContracts.createEnvelope({
+                pointer: pointerId,
+                contentType: 'json-data',
+                metadata: { source: 'schema-editor', title, tableCount: tables.length },
+                hints: { suggestedTarget: 'tifany', action: 'load-tables' },
+            }));
+            this.showToast(`Sent ${tables.length} table${tables.length > 1 ? 's' : ''} to TAFNE`, 'success');
+        } catch (err) {
+            this.showToast(`Send failed: ${err.message || err}`, 'error');
+        }
+    },
+
     // CWS inbound: svg-vector envelope (e.g. pdf-processor's CTM-resolved vector
     // extraction). Fetch, validate, mount through the normal import path so the
     // geometry pipeline (classify → topology → nets) runs on it.

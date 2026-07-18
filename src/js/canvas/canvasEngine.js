@@ -790,10 +790,55 @@ Object.assign(MobileSVGEditor.prototype, {
         });
     },
 
+    // ── Keyboard rotate / flip (Shift+R / Shift+F) ────────────
+    // 90° steps around the selection center — the EDA convention for
+    // orienting components without touching the rotate handle.
+    rotateSelected(deg = 90) {
+        if (!this._selection.length) return;
+        const bb = this._getSelectionBBoxWorld();
+        if (!bb) return;
+        const before = this._captureFullState();
+        const startTransforms = this._selection.map(el => ({
+            el, transform: el.getAttribute('transform') || '',
+        }));
+        // A lone symbol rotates around its own origin so pins stay on-grid;
+        // the label-inclusive bbox center sits a few units off and would
+        // walk the pins off the snap lattice on every quarter turn.
+        let cx = bb.x + bb.width / 2, cy = bb.y + bb.height / 2;
+        if (this._selection.length === 1 &&
+            this._selection[0].classList?.contains('domain-symbol')) {
+            // Local (0,0) through the consolidated transform = the symbol origin
+            const lm = this._selection[0].transform?.baseVal?.consolidate()?.matrix;
+            if (lm) { cx = lm.e; cy = lm.f; }
+        }
+        this._applyRotation(startTransforms, cx, cy, deg);
+        this._updateWiresForSelection();
+        this._renderHandles();
+        this.pushHistory('Rotate 90°', before, this._captureFullState());
+    },
+
+    flipSelected(axis = 'h') {
+        if (!this._selection.length) return;
+        const bb = this._getSelectionBBoxWorld();
+        if (!bb) return;
+        const before = this._captureFullState();
+        const cx = bb.x + bb.width / 2, cy = bb.y + bb.height / 2;
+        const sx = axis === 'h' ? -1 : 1, sy = axis === 'h' ? 1 : -1;
+        this._selection.forEach(el => {
+            const origT = el.getAttribute('transform') || '';
+            el.setAttribute('transform',
+                `translate(${cx},${cy}) scale(${sx},${sy}) translate(${-cx},${-cy}) ${origT}`);
+        });
+        this._updateWiresForSelection();
+        this._renderHandles();
+        this.pushHistory('Flip', before, this._captureFullState());
+    },
+
     // ── Move Selected ─────────────────────────────────────────
 
     _startMoveSelected(startClientX, startClientY) {
         if (!this._selection.length) return;
+        this._moveActive = true;
         const before = this._captureFullState();
         const svgStart = this.screenToSVG(startClientX, startClientY);
 
@@ -922,6 +967,7 @@ Object.assign(MobileSVGEditor.prototype, {
 
         const onUp = () => {
             $(document).off('mousemove.move mouseup.move');
+            this._moveActive = false;
             this._removeSnapGuides();
             if (pendingWireSnap) this._commitWireSnap(pendingWireSnap, pendingWireSnap.symEl);
             const after = this._captureFullState();
@@ -1574,6 +1620,13 @@ Object.assign(MobileSVGEditor.prototype, {
         ).each((_, el) => {
             if (!el.dataset || el.dataset.locked === 'true' || el.id?.startsWith('_')) return;
 
+            // Hitbox clones are interaction plumbing, not content — selecting one
+            // as its own element double-counts the wire/component it belongs to.
+            if (el.classList.contains('wire-hitbox') || el.classList.contains('component-hitbox')) return;
+            // Wire visuals live inside .wire-group wrappers; select the visual path,
+            // never the wrapper group (it has no id and confuses group-move logic).
+            if (el.classList.contains('wire-group') || el.classList.contains('component-group')) return;
+
             let bb;
             try { bb = el.getBBox(); } catch (_) { return; }
             if (!bb || (bb.width === 0 && bb.height === 0)) return;
@@ -1638,6 +1691,20 @@ Object.assign(MobileSVGEditor.prototype, {
             this.deselectAll();
             this.selectEl(e.target);
             this.showToast('Element inside group selected — click canvas to exit', 'success');
+        });
+
+        // Hovering a wire lights up its whole electrically-connected net —
+        // the "is this actually one net?" question answered without a click.
+        this.$svgDisplay.on('mouseenter.net', '.wire-hitbox', (e) => {
+            if (this.activeTool !== 'select') return;
+            const visual = e.target.previousElementSibling;
+            if (visual?.getAttribute('data-geo-class') === 'wire')
+                this._highlightNetForWire(visual);
+        });
+        this.$svgDisplay.on('mouseleave.net', '.wire-hitbox', () => {
+            // Keep the glow if a wire in the net is actively selected
+            if (!this._selection.some(el => el.getAttribute?.('data-geo-class') === 'wire'))
+                this._clearNetHighlight();
         });
 
         // Cursor update on hover — changes to resize/rotate cursor over overlay handles

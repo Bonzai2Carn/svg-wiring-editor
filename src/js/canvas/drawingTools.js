@@ -74,7 +74,7 @@ Object.assign(MobileSVGEditor.prototype, {
             `<label>Start <select data-endpoint="start">${opts}</select></label>` +
             `<label>End <select data-endpoint="end">${opts}</select></label>`;
         bar.style.cssText =
-            'position:fixed;bottom:64px;left:50%;transform:translateX(-50%);display:flex;gap:12px;' +
+            'position:fixed;bottom:118px;left:50%;transform:translateX(-50%);display:flex;gap:12px;' +
             'padding:6px 12px;background:rgba(20,24,32,.92);color:#dfe6ee;' +
             'border:1px solid rgba(255,255,255,.14);border-radius:8px;font-size:12px;z-index:900;';
         bar.querySelectorAll('select').forEach(sel => {
@@ -549,6 +549,9 @@ Object.assign(MobileSVGEditor.prototype, {
             this._drawState.pinTo = pinInfo;
             const d = this._wirePathFromPoints(this._drawState.points);
             this._drawPreview?.setAttribute('d', d);
+            // Landing on a pin terminates the wire — every EDA auto-commits here,
+            // and making the user press Enter after reaching a pin reads as a bug.
+            if (pinInfo) this._wireCommit();
         }
     },
 
@@ -574,6 +577,10 @@ Object.assign(MobileSVGEditor.prototype, {
             this._cancelDraw(); return;
         }
         const { points, pinFrom, pinTo } = this._drawState;
+        // Degenerate wire (double-click on one pin) — nothing to keep
+        const span = points.reduce((s, p) =>
+            Math.max(s, Math.hypot(p.x - points[0].x, p.y - points[0].y)), 0);
+        if (span < 2) { this._cancelDraw(); return; }
         const lastPt = points[points.length - 1];
 
         const d = this._wirePathFromPoints(points);

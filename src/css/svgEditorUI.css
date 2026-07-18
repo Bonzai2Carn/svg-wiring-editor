@@ -2595,3 +2595,52 @@ body.gx-embedded .gx-mcp-pill-wrap { display: flex; }
     color: var(--border-accent);
     text-decoration: none;
 }
+
+/* ============================================================
+   Hit-testing & placement affordances
+   ============================================================ */
+/* Closed user-drawn shapes are usually fill:none — with default
+   pointer-events only the 2px stroke is clickable, which makes
+   selection nearly impossible on touch. `all` makes the interior
+   hittable. Open paths (wires, pen ink) keep stroke-only hits so
+   an L-bend's empty corner can't steal clicks. */
+#svgDisplay rect[id^="el_"],
+#svgDisplay ellipse[id^="el_"],
+#svgDisplay circle[id^="el_"],
+#svgDisplay polygon[id^="el_"] {
+    pointer-events: all;
+}
+
+/* Ghost symbol that follows the cursor in stamp-placement mode */
+.stamp-ghost {
+    pointer-events: none;
+}
+.stamp-ghost .pin-point {
+    fill: #22c55e;
+}
+
+/* First-run canvas hint */
+#canvasFirstRunHint {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    color: rgba(90, 100, 115, 0.55);
+    pointer-events: none;
+    z-index: 5;
+    font-family: Inter, sans-serif;
+}
+#canvasFirstRunHint .hint-line {
+    font-size: 16px;
+    font-weight: 500;
+}
+#canvasFirstRunHint .hint-sub {
+    font-size: 13px;
+    font-weight: 400;
+    margin-top: 6px;
+    opacity: 0.8;
+}
+body.dark-mode #canvasFirstRunHint {
+    color: rgba(190, 200, 215, 0.45);
+}

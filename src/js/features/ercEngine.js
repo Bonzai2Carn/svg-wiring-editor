@@ -19,10 +19,13 @@ Object.assign(MobileSVGEditor.prototype, {
                     const symbol = c.element?.getAttribute?.('data-symbol');
                     const spec = symbol && ctx.specs[symbol];
                     if (!spec?.pinCount) return;
-                    const connected = (c.ports || []).length;
+                    // Count DISTINCT pins — two wires on one pin is still one connected pin
+                    const connected = new Set(
+                        (c.ports || []).map(p => p.pinId ?? `${p.x},${p.y}`)).size;
                     if (connected < spec.pinCount) {
+                        const name = c.element?.getAttribute?.('data-refdes') || c.element?.id || c.id;
                         out.push({
-                            message: `${symbol} "${c.element?.id || c.id}": ${connected}/${spec.pinCount} pins connected`,
+                            message: `${symbol} "${name}": ${connected}/${spec.pinCount} pins connected`,
                             elementIds: [c.element?.id].filter(Boolean),
                         });
                     }
@@ -61,7 +64,8 @@ Object.assign(MobileSVGEditor.prototype, {
             check(ctx) {
                 const byRef = new Map();
                 ctx.components.forEach(c => {
-                    const ref = c.element?.querySelector?.('text.sym-value')?.textContent?.trim();
+                    const ref = c.element?.getAttribute?.('data-refdes') ||
+                                c.element?.querySelector?.('text.sym-refdes')?.textContent?.trim();
                     if (!ref) return;
                     if (!byRef.has(ref)) byRef.set(ref, []);
                     byRef.get(ref).push(c);
@@ -149,8 +153,8 @@ Object.assign(MobileSVGEditor.prototype, {
 
         const bom = this.buildBom(ctx);
         const bomRows = bom.map(r =>
-            `<tr><td style="padding:2px 6px">${r.qty}×</td><td style="padding:2px 6px">${r.symbol}</td>` +
-            `<td style="padding:2px 6px">${r.value || '—'}</td></tr>`
+            `<tr><td style="padding:2px 6px">${r.qty}×</td><td style="padding:2px 6px">${r.refs?.join(' ') || r.symbol}</td>` +
+            `<td style="padding:2px 6px">${r.symbol}</td><td style="padding:2px 6px">${r.value || '—'}</td></tr>`
         ).join('');
 
         panel.innerHTML = `
@@ -163,7 +167,10 @@ Object.assign(MobileSVGEditor.prototype, {
             <div style="margin-top:12px;border-top:1px solid rgba(255,255,255,.12);padding-top:8px">
                 <div style="display:flex;justify-content:space-between;align-items:center">
                     <strong>BOM (${bom.length} line items)</strong>
-                    <button id="ercBomCsvBtn" style="background:rgba(79,172,254,.18);border:1px solid rgba(79,172,254,.5);color:#9fd2ff;border-radius:5px;cursor:pointer;font-size:11px;padding:2px 8px">CSV</button>
+                    <span>
+                        <button id="ercBomCsvBtn" style="background:rgba(79,172,254,.18);border:1px solid rgba(79,172,254,.5);color:#9fd2ff;border-radius:5px;cursor:pointer;font-size:11px;padding:2px 8px">CSV</button>
+                        <button id="ercBomTafneBtn" style="background:rgba(132,204,22,.18);border:1px solid rgba(132,204,22,.5);color:#d3f79f;border-radius:5px;cursor:pointer;font-size:11px;padding:2px 8px">→ TAFNE</button>
+                    </span>
                 </div>
                 <table style="width:100%;margin-top:6px;border-collapse:collapse">${bomRows}</table>
             </div>`;
@@ -171,6 +178,27 @@ Object.assign(MobileSVGEditor.prototype, {
 
         panel.querySelector('#ercCloseBtn').addEventListener('click', () => panel.remove());
         panel.querySelector('#ercBomCsvBtn').addEventListener('click', () => this._downloadBomCsv(bom));
+        panel.querySelector('#ercBomTafneBtn').addEventListener('click', () => {
+            const specs = window.COMPONENT_SPECS || {};
+            const tables = [{
+                name: 'BOM',
+                rows: bom.map(r => ({
+                    qty: String(r.qty), symbol: r.symbol, value: r.value,
+                    description: specs[r.symbol]?.description || '',
+                    elements: r.ids.join(' '),
+                })),
+            }];
+            if (findings.length) {
+                tables.push({
+                    name: 'Findings',
+                    rows: findings.map(f => ({
+                        severity: f.severity, rule: f.ruleId,
+                        message: f.message, elements: f.elementIds.join(' '),
+                    })),
+                });
+            }
+            this.sendTablesToTafne(tables, 'design-check');
+        });
         panel.querySelectorAll('.erc-row').forEach(row => {
             row.addEventListener('click', () => {
                 this.clearAllHighlights?.();
@@ -194,19 +222,21 @@ Object.assign(MobileSVGEditor.prototype, {
             if (!symbol) return;   // heuristic blobs stay out of the BOM
             const value = c.element?.querySelector?.('text.sym-value')?.textContent?.trim() || '';
             const key = `${symbol} ${value}`;
-            if (!groups.has(key)) groups.set(key, { symbol, value, qty: 0, ids: [] });
+            if (!groups.has(key)) groups.set(key, { symbol, value, qty: 0, ids: [], refs: [] });
             const g = groups.get(key);
             g.qty++;
             if (c.element?.id) g.ids.push(c.element.id);
+            const ref = c.element?.getAttribute?.('data-refdes');
+            if (ref) g.refs.push(ref);
         });
         return [...groups.values()].sort((a, b) => a.symbol.localeCompare(b.symbol));
     },
 
     _downloadBomCsv(bom) {
         const esc = (s) => `"${String(s).replace(/"/g, '""')}"`;
-        const csv = ['Qty,Symbol,Value,Description,Elements']
+        const csv = ['Qty,Refs,Symbol,Value,Description,Elements']
             .concat(bom.map(r => [
-                r.qty, esc(r.symbol), esc(r.value),
+                r.qty, esc(r.refs?.join(' ') || ''), esc(r.symbol), esc(r.value),
                 esc(window.COMPONENT_SPECS?.[r.symbol]?.description || ''),
                 esc(r.ids.join(' ')),
             ].join(',')))

@@ -300,7 +300,7 @@
         <div class="custom-bar">
 
             <!-- Wiring section -->
-            <button class="accordion active slide-bar" aria-label="Wiring tools">
+            <button class="accordion slide-bar" aria-label="Wiring tools">
                 <h3>Wiring</h3>
             </button>
             <div class="panel control-group-flex" style="overflow: auto; flex-wrap: nowrap; -ms-overflow-style: none;
@@ -319,8 +319,10 @@
                 </button>
             </div>
 
-            <!-- ── EDIT SECTION ─────────────────────────────── -->
-            <button class="accordion slide-bar" aria-label="Edit tools">
+            <!-- ── EDIT SECTION ───────────────────────────────
+                 Open by default: a first-run visitor must see drawing tools
+                 without hunting through tabs. -->
+            <button class="accordion active slide-bar" aria-label="Edit tools">
                 <h3>Edit</h3>
             </button>
             <div class="panel control-group-flex" id="editToolbar">
@@ -496,6 +498,11 @@
 
             <!-- SVG canvas -->
             <main class="svg-viewer">
+                <!-- First-run hint — removed the moment any content exists -->
+                <div id="canvasFirstRunHint" aria-hidden="true">
+                    <div class="hint-line">Pick a tool above and drag to draw</div>
+                    <div class="hint-line hint-sub">or open the symbol library on the left — click a symbol, then click the canvas to place it</div>
+                </div>
                 <div class="svg-container" id="svgContainer">
                     <div class="svg-wrapper" id="svgWrapper">
                         <svg id="svgDisplay" width="1200" height="800" viewBox="0 0 1200 800">
@@ -612,7 +619,7 @@
             </div>
 
             <div class="control-btn" id="ercBtn" title="Design check (ERC) + BOM">
-                <div class="icon"><iconify-icon icon="material-symbols:rule-outline"
+                <div class="icon"><iconify-icon icon="material-symbols:fact-check-outline"
                         style="font-size:20px;"></iconify-icon></div>
             </div>
 
@@ -825,6 +832,7 @@
     <script src="src/js/features/history.js"></script>
     <script src="src/js/features/uiControls.js"></script>
     <script src="/assets/schema-editor/data/component-specs.js"></script>
+    <script src="src/js/core/ctmAdapter.js"></script>
     <script src="src/js/features/ercEngine.js"></script>
 
     <script>

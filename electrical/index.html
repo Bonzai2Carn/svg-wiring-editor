@@ -280,7 +280,7 @@
         <div class="custom-bar">
 
             <!-- Wiring section -->
-            <button class="accordion active slide-bar" aria-label="Wiring tools">
+            <button class="accordion slide-bar" aria-label="Wiring tools">
                 <h3>Wiring</h3>
             </button>
             <div class="panel control-group-flex" style="overflow: auto; flex-wrap: nowrap; -ms-overflow-style: none;
@@ -300,7 +300,7 @@
             </div>
 
             <!-- ── EDIT SECTION ─────────────────────────────── -->
-            <button class="accordion slide-bar" aria-label="Edit tools">
+            <button class="accordion active slide-bar" aria-label="Edit tools">
                 <h3>Edit</h3>
             </button>
             <div class="panel control-group-flex" id="editToolbar">
@@ -470,6 +470,11 @@
 
             <!-- SVG canvas -->
             <main class="svg-viewer">
+                <!-- First-run hint — removed the moment any content exists -->
+                <div id="canvasFirstRunHint" aria-hidden="true">
+                    <div class="hint-line">Pick a tool above and drag to draw</div>
+                    <div class="hint-line hint-sub">or open the symbol library on the left — click a symbol, then click the canvas to place it</div>
+                </div>
                 <div class="svg-container" id="svgContainer">
                     <div class="svg-wrapper" id="svgWrapper">
                         <svg id="svgDisplay" width="1200" height="800" viewBox="0 0 1200 800">
@@ -583,6 +588,11 @@
                 <div class="icon"><iconify-icon icon="material-symbols:straighten-outline"
                         style="font-size:20px;"></iconify-icon></div>
                 <!-- <div>Measure</div> -->
+            </div>
+
+            <div class="control-btn" id="ercBtn" title="Design check (ERC) + BOM">
+                <div class="icon"><iconify-icon icon="material-symbols:fact-check-outline"
+                        style="font-size:20px;"></iconify-icon></div>
             </div>
 
             <div class="control-btn" id="layersBtn" title="Layers / Properties Panel">
@@ -793,6 +803,9 @@
     <script src="src/js/features/layers.js"></script>
     <script src="src/js/features/history.js"></script>
     <script src="src/js/features/uiControls.js"></script>
+    <script src="/assets/schema-editor/data/component-specs.js"></script>
+    <script src="src/js/core/ctmAdapter.js"></script>
+    <script src="src/js/features/ercEngine.js"></script>
 
     <script>
         $(document).ready(function () {
@@ -926,6 +939,14 @@
             var _viewQuery = new URLSearchParams(location.search).get('view');
             if (!window.__GINEXYS_INITIAL_MODE__ && _viewQuery) {
                 window.__GINEXYS_INITIAL_MODE__ = _viewQuery;
+            }
+
+            // Direct navigation: the folder IS the mode — a visitor landing on
+            // /electrical/ came for the circuit editor, not General mode.
+            if (!window.__GINEXYS_INITIAL_MODE__) {
+                var _seg = location.pathname.match(/schema-editor\/(electrical|software|construction|floorplan|general)\//);
+                if (_seg) window.__GINEXYS_INITIAL_MODE__ =
+                    _seg[1] === 'floorplan' ? 'construction' : _seg[1];
             }
 
             // VS Code: load the file that was open when the editor launched

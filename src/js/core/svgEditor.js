@@ -335,6 +335,13 @@ class MobileSVGEditor {
                 this.setActiveTool('select');
             }
 
+            // Shift+R / Shift+F — rotate 90° / flip the selection (EDA convention;
+            // plain R stays the rect tool). No-ops when nothing is selected.
+            if (!ctrl && !e.altKey && e.shiftKey && this._selection?.length) {
+                if (key === 'r') { e.preventDefault(); this.rotateSelected(90); }
+                if (key === 'f') { e.preventDefault(); this.flipSelected('h'); }
+            }
+
             // Tool hotkeys — single key, no modifier (match button title= hints)
             if (!ctrl && !e.altKey && !e.shiftKey) {
                 switch (key) {

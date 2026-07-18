@@ -29,6 +29,11 @@ Object.assign(MobileSVGEditor.prototype, {
             this._historyIndex++;
         }
         this._syncUndoRedoUI();
+
+        // Every push marks a completed topology edit (draw, move, delete, paste,
+        // rotate…) — refresh the electrical graph so ERC, nets, and pin badges
+        // track the live scene instead of the last import.
+        this._scheduleGeoAnalysis?.();
     },
 
     undo() {
@@ -105,3 +110,20 @@ Object.assign(MobileSVGEditor.prototype, {
         });
     },
 });
+
+/* First-run canvas hint: retire as soon as any user content reaches the
+   canvas by any path (drawing, symbol stamp, file load, OS restore).
+   Lives here because every editor page loads history.js; pages without
+   the hint div no-op. */
+(function () {
+    const hint = document.getElementById('canvasFirstRunHint');
+    const svgEl = document.getElementById('svgDisplay');
+    if (!hint || !svgEl) return;
+    const hasContent = () =>
+        svgEl.querySelector('[id^="el_"], .domain-symbol, [data-geo-class]');
+    if (hasContent()) { hint.remove(); return; }
+    const mo = new MutationObserver(() => {
+        if (hasContent()) { hint.remove(); mo.disconnect(); }
+    });
+    mo.observe(svgEl, { childList: true, subtree: true });
+})();
