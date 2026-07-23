@@ -350,6 +350,17 @@ ${svgData}
 
             // ── Step 5: Deliver ────────────────────────────────
             pipeline.step(5, 'running', 'Delivering…');
+            // Provenance assembly is intelligence-layer POLICY and lives in the
+            // shell-provided GxProvenance module (assets/os/provenance.js), NOT in
+            // this forkable tool. Standalone/forked builds have no GxProvenance, so
+            // the send simply carries no lineage — the tool still works.
+            const fullLineage = window.GxProvenance
+                ? window.GxProvenance.build('svg_wiring', CwsContracts.PROVENANCE_STAGES.ANALYSIS, {
+                    source: diagram.name,
+                    ops: ['place_component', 'connect', 'set_label'],
+                    score: null,
+                })
+                : [];
             CwsBridge.offerData(CwsContracts.createEnvelope({
                 pointer:     pointerId,
                 contentType: 'json-data',
@@ -360,6 +371,7 @@ ${svgData}
                     wireCount:      wires.length,
                 },
                 hints: { suggestedTarget: 'tifany', action: 'load-diagram' },
+                provenance: fullLineage,
             }));
             this._trackExport();
             pipeline.step(5, 'done',

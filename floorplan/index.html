@@ -795,6 +795,10 @@
     <script src="/assets/schema-editor/domains/softwareKit.js"></script>
     <script src="/assets/schema-editor/domains/constructionKit.js"></script>
 
+    <!-- AI layout bookkeeper + apply-ops handler are NOT loaded here: they are
+         the intelligence layer, injected at runtime by the OS shell (Pro).
+         A standalone/forked copy of this tool has no AI orchestration. -->
+
     <!-- Features -->
     <script src="src/js/features/viewTransform.js"></script>
     <script src="src/js/features/wiringDiagram.js"></script>
@@ -907,6 +911,9 @@
             // CWS IPC: receive back-annotation from TAFNE (no-op when OS bridge absent)
             if (window.CwsBridge) {
                 CwsBridge.onData(function (envelope) {
+                    // Incoming lineage capture is intelligence-layer policy (shell-
+                    // provided GxProvenance; no-op standalone/forked).
+                    if (window.GxProvenance) window.GxProvenance.captureIncoming(envelope);
                     if (envelope?.hints?.action !== 'back-annotate') return;
                     window.editor.receiveBackAnnotation(envelope);
                 });
@@ -977,6 +984,50 @@
                     }
                 }, 150);
             }
+
+            // OS shell Send card (Pro) → gx:ipc-send. TAFNE route reuses the
+            // existing netlist send pipeline; the PDF card launches the PDF tool
+            // so its Analyze tab can send vector regions back here.
+            window.addEventListener('message', function (e) {
+                if (e.origin !== window.location.origin || e.data?.type !== 'gx:ipc-send') return;
+                if (e.data.target === 'tifany') {
+                    if (window.editor && typeof window.editor.sendNetlistToTafne === 'function') {
+                        window.editor.sendNetlistToTafne();
+                    }
+                } else if (e.data.target === 'pdf_processor' && window.CwsBridge) {
+                    window.CwsBridge.send('cws:tool:launch', { toolId: 'pdf_processor', focusAfterLaunch: true }, 'os');
+                }
+            });
+
+            // AI layer: context requests + validated op application from the OS shell.
+            window.addEventListener('message', function (e) {
+                if (e.origin !== window.location.origin || !e.data) return;
+                if (e.data.type === 'gx:ai-get-context') {
+                    var diagram = null;
+                    try {
+                        if (window.editor && typeof window.editor._buildDiagramPayload === 'function') {
+                            diagram = window.editor._buildDiagramPayload();
+                        }
+                    } catch (_) {}
+                    var text = '';
+                    if (diagram && diagram.topology) {
+                        var comps = diagram.topology.components || [];
+                        var wires = diagram.topology.wires || [];
+                        var conns = diagram.topology.connections || [];
+                        text = 'Schematic: ' + comps.length + ' components, ' + wires.length + ' wires, ' + conns.length + ' connections.';
+                        for (var _i = 0; _i < comps.length; _i++) {
+                            var c = comps[_i];
+                            text += '\n  ' + (c.refdes || '?') + ' (' + (c.symbol || c.type || '?') + ')' + (c.value ? ' = ' + c.value : '') + ' layer=' + (c.layer || 'default');
+                        }
+                    }
+                    e.source.postMessage({ type: 'gx:ai-context', requestId: e.data.requestId, payload: { diagram: diagram, text: text } }, e.origin);
+                    return;
+                }
+                // gx:ai-apply-ops is handled by the INJECTED root module
+                // (assets/schema-editor/ai/applyOps.js), injected by the OS shell.
+                // The intelligence orchestration deliberately does NOT live in this
+                // forkable tool — see memory project_ai_ip_boundary.
+            });
 
             // VS Code: live-sync when the file is edited in the text editor
             window.addEventListener('message', function (e) {
