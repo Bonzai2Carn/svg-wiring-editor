@@ -108,6 +108,177 @@ Object.assign(MobileSVGEditor.prototype, {
                 }));
             },
         },
+
+    ],
+
+    // ── Connection-validity rules (separate pack, enabled when specs have pins) ──
+    _CONNECTION_RULES: [
+        {
+            id: 'output-to-output', severity: 'error',
+            check(ctx) {
+                const findings = [];
+                ctx.nets.forEach(n => {
+                    const roles = {};
+                    const compMap = {};
+                    ctx.components.forEach(c => { compMap[c.id] = c; });
+                    [...n.compIds].forEach(cid => {
+                        const c = compMap[cid];
+                        if (!c) return;
+                        const sym = c.element?.getAttribute?.('data-symbol');
+                        const specPins = sym && ctx.specs[sym]?.pins;
+                        if (!specPins) return;
+                        (c.ports || []).forEach(p => {
+                            if (!n.wireIds.includes(p.wireId)) return;
+                            const spec = specPins[p.pinId];
+                            if (spec) roles[p.pinId + '@' + cid] = spec.role;
+                        });
+                    });
+                    const outputs = Object.values(roles).filter(r => r === 'output');
+                    if (outputs.length >= 2) {
+                        findings.push({
+                            message: `${n.id}: ${outputs.length} output pins on the same net (bus contention)`,
+                            elementIds: n.wireIds.map(wid => ctx.wires.find(w => w.id === wid)?.element?.id).filter(Boolean),
+                        });
+                    }
+                });
+                return findings;
+            },
+        },
+        {
+            id: 'no-driver', severity: 'warning',
+            check(ctx) {
+                const findings = [];
+                ctx.nets.forEach(n => {
+                    const roles = {};
+                    const compMap = {};
+                    ctx.components.forEach(c => { compMap[c.id] = c; });
+                    [...n.compIds].forEach(cid => {
+                        const c = compMap[cid];
+                        if (!c) return;
+                        const sym = c.element?.getAttribute?.('data-symbol');
+                        const specPins = sym && ctx.specs[sym]?.pins;
+                        if (!specPins) return;
+                        (c.ports || []).forEach(p => {
+                            if (!n.wireIds.includes(p.wireId)) return;
+                            const spec = specPins[p.pinId];
+                            if (spec) roles[p.pinId + '@' + cid] = spec.role;
+                        });
+                    });
+                    // A net is driverless only if it has input pins and NOTHING that
+                    // could source current: no output/power/bidir, and no passive pin
+                    // (a passive two-terminal part propagates a driver from its far pin,
+                    // so its presence means drive can arrive — don't false-flag it).
+                    const rvals = Object.values(roles);
+                    const canDrive = rvals.some(r => r === 'output' || r === 'power' || r === 'bidir' || r === 'passive');
+                    const hasInput = rvals.some(r => r === 'input');
+                    if (hasInput && !canDrive) {
+                        findings.push({
+                            message: `${n.id}: no driver — only input pins on this net`,
+                            elementIds: n.wireIds.map(wid => ctx.wires.find(w => w.id === wid)?.element?.id).filter(Boolean),
+                        });
+                    }
+                });
+                return findings;
+            },
+        },
+        {
+            id: 'signal-domain-mismatch', severity: 'warning',
+            check(ctx) {
+                const findings = [];
+                ctx.nets.forEach(n => {
+                    const types = {};
+                    const compMap = {};
+                    ctx.components.forEach(c => { compMap[c.id] = c; });
+                    [...n.compIds].forEach(cid => {
+                        const c = compMap[cid];
+                        if (!c) return;
+                        const sym = c.element?.getAttribute?.('data-symbol');
+                        const specPins = sym && ctx.specs[sym]?.pins;
+                        if (!specPins) return;
+                        (c.ports || []).forEach(p => {
+                            if (!n.wireIds.includes(p.wireId)) return;
+                            const spec = specPins[p.pinId];
+                            if (spec && spec.signalType) types[p.pinId + '@' + cid] = spec.signalType;
+                        });
+                    });
+                    const vals = Object.values(types);
+                    if (vals.includes('digital') && vals.includes('analog')) {
+                        findings.push({
+                            message: `${n.id}: digital and analog signal types on the same net`,
+                            elementIds: n.wireIds.map(wid => ctx.wires.find(w => w.id === wid)?.element?.id).filter(Boolean),
+                        });
+                    }
+                });
+                return findings;
+            },
+        },
+        {
+            id: 'polarity-reversed', severity: 'warning',
+            check(ctx) {
+                const findings = [];
+                ctx.nets.forEach(n => {
+                    const polarities = {};
+                    const compMap = {};
+                    ctx.components.forEach(c => { compMap[c.id] = c; });
+                    [...n.compIds].forEach(cid => {
+                        const c = compMap[cid];
+                        if (!c) return;
+                        const sym = c.element?.getAttribute?.('data-symbol');
+                        const specPins = sym && ctx.specs[sym]?.pins;
+                        if (!specPins) return;
+                        (c.ports || []).forEach(p => {
+                            if (!n.wireIds.includes(p.wireId)) return;
+                            const spec = specPins[p.pinId];
+                            if (spec && spec.polarity) polarities[cid] = spec.polarity;
+                        });
+                    });
+                    const vals = Object.values(polarities).filter(Boolean);
+                    if (vals.length >= 2 && new Set(vals).size > 1) {
+                        const names = [...n.compIds].map(cid => {
+                            const c = compMap[cid];
+                            return c?.element?.getAttribute?.('data-refdes') || cid;
+                        });
+                        findings.push({
+                            message: `${n.id}: polarity mismatch on net (${names.join(' vs ')})`,
+                            elementIds: n.wireIds.map(wid => ctx.wires.find(w => w.id === wid)?.element?.id).filter(Boolean),
+                        });
+                    }
+                });
+                return findings;
+            },
+        },
+        {
+            id: 'power-to-signal', severity: 'error',
+            check(ctx) {
+                const findings = [];
+                ctx.nets.forEach(n => {
+                    const roles = {};
+                    const compMap = {};
+                    ctx.components.forEach(c => { compMap[c.id] = c; });
+                    [...n.compIds].forEach(cid => {
+                        const c = compMap[cid];
+                        if (!c) return;
+                        const sym = c.element?.getAttribute?.('data-symbol');
+                        const specPins = sym && ctx.specs[sym]?.pins;
+                        if (!specPins) return;
+                        (c.ports || []).forEach(p => {
+                            if (!n.wireIds.includes(p.wireId)) return;
+                            const spec = specPins[p.pinId];
+                            if (spec) roles[p.pinId + '@' + cid] = spec.role;
+                        });
+                    });
+                    const hasPower = Object.values(roles).some(r => r === 'power' || r === 'ground');
+                    const hasSignalOutput = Object.values(roles).some(r => r === 'output');
+                    if (hasPower && hasSignalOutput) {
+                        findings.push({
+                            message: `${n.id}: power/ground pin shorted to signal output`,
+                            elementIds: n.wireIds.map(wid => ctx.wires.find(w => w.id === wid)?.element?.id).filter(Boolean),
+                        });
+                    }
+                });
+                return findings;
+            },
+        },
     ],
 
     // ── Run + panel ───────────────────────────────────────────
@@ -128,6 +299,14 @@ Object.assign(MobileSVGEditor.prototype, {
                 rule.check(ctx).forEach(f => findings.push({ ...f, ruleId: rule.id, severity: rule.severity }));
             } catch (_) { /* one broken rule must not kill the run */ }
         });
+        // Connection-validity rules (requires COMPONENT_SPECS.pins)
+        if (this._CONNECTION_RULES && ctx.specs && Object.values(ctx.specs).some(s => s.pins)) {
+            this._CONNECTION_RULES.forEach(rule => {
+                try {
+                    rule.check(ctx).forEach(f => findings.push({ ...f, ruleId: rule.id, severity: rule.severity }));
+                } catch (_) { /* one broken rule must not kill the run */ }
+            });
+        }
         this._renderErcPanel(findings, ctx);
     },
 
@@ -230,6 +409,36 @@ Object.assign(MobileSVGEditor.prototype, {
             if (ref) g.refs.push(ref);
         });
         return [...groups.values()].sort((a, b) => a.symbol.localeCompare(b.symbol));
+    },
+
+    // ── Structured ERC (for AI consumption) ────────────────────
+    // Returns findings as JSON, same logic as runErc but without rendering.
+    runErcStructured() {
+        if (!this.graph?.nets?.length && !this.components?.length) {
+            return { findings: [], summary: 'no data' };
+        }
+        const ctx = {
+            nets:       this.graph?.nets || [],
+            components: (this.components || []).filter(c => c.element?.isConnected),
+            wires:      (this.wires || []).filter(w => w.element?.isConnected),
+            specs:      window.COMPONENT_SPECS || {},
+        };
+        const findings = [];
+        this._ERC_RULES.forEach(rule => {
+            try {
+                rule.check(ctx).forEach(f => findings.push({ ...f, ruleId: rule.id, severity: rule.severity }));
+            } catch (_) {}
+        });
+        if (this._CONNECTION_RULES && ctx.specs && Object.values(ctx.specs).some(s => s.pins)) {
+            this._CONNECTION_RULES.forEach(rule => {
+                try {
+                    rule.check(ctx).forEach(f => findings.push({ ...f, ruleId: rule.id, severity: rule.severity }));
+                } catch (_) {}
+            });
+        }
+        const errors = findings.filter(f => f.severity === 'error').length;
+        const warnings = findings.filter(f => f.severity === 'warning').length;
+        return { findings: findings, errorCount: errors, warningCount: warnings, total: findings.length };
     },
 
     _downloadBomCsv(bom) {

@@ -1049,10 +1049,21 @@
                             text += '\n  ' + (c.refdes || '?') + ' (' + (c.symbol || c.type || '?') + ')' + (c.value ? ' = ' + c.value : '') + ' layer=' + (c.layer || 'default');
                         }
                     }
+                    //  / /domain addressing context (mirrors TAFNE  / /mode)
+                    var _ed = window.editor;
+                    var _displays = (_ed && _ed.displays || []).map(function (d, i) {
+                        return { name: d.name, index: i, active: i === _ed.activeDisplayIdx };
+                    });
+                    var _domain = _ed && _ed.activeMode;
+                    var _sel = _ed && (_ed._selection || _ed.selectedElements) || [];
+                    var _selRefs = Array.prototype.slice.call(_sel).map(function (el) {
+                        return el.getAttribute && el.getAttribute("data-refdes");
+                    }).filter(Boolean);
+
                     e.source.postMessage({
                         type: 'gx:ai-context',
                         requestId: e.data.requestId,
-                        payload: { diagram: diagram, text: text },
+                        payload: { diagram: diagram, text: text, displays: _displays, domain: _domain, selection: _selRefs },
                     }, e.origin);
                     return;
                 }
