@@ -172,16 +172,16 @@
                 <!-- Mode Switcher (Phase 2) -->
                 <div class="mode-switcher" id="modeSwitcher" title="Canvas domain mode">
                     <button class="mode-pill active" data-mode="general" title="General drawing mode">
-                        <iconify-icon icon="material-symbols:draw-outline"></iconify-icon> General
+                        <iconify-icon icon="material-symbols:shapes-outline"></iconify-icon> General
                     </button>
                     <button class="mode-pill" data-mode="electrical" title="Electrical / PCB mode">
-                        <iconify-icon icon="material-symbols:bolt"></iconify-icon> Electrical
+                        <iconify-icon icon="material-symbols:memory-outline"></iconify-icon> Electrical
                     </button>
                     <button class="mode-pill" data-mode="software" title="Software Design — ERD, Sequence, FSM">
-                        <iconify-icon icon="material-symbols:schema-outline"></iconify-icon> Software
+                        <iconify-icon icon="material-symbols:account-tree-outline"></iconify-icon> Software
                     </button>
                     <button class="mode-pill" data-mode="construction" title="Construction / Architecture mode">
-                        <iconify-icon icon="material-symbols:architecture"></iconify-icon> Construction
+                        <iconify-icon icon="material-symbols:apartment"></iconify-icon> Construction
                     </button>
                 </div>
 
@@ -223,19 +223,6 @@
                         <span class="panel-content">Toolbar</span>
                     </button>
 
-                    <!-- Wire-trace toggle -->
-                    <div class="switch-mode btn">
-                        <small class="switch-content">
-                            <iconify-icon icon="material-symbols:bolt"
-                                style="font-size:14px;color:#4facfe;"></iconify-icon>
-                            Trace
-                        </small>
-                        <div class="switch" id="traceWireBtn" title="Wire Trace ON/OFF" role="switch"
-                            aria-checked="false">
-                            <input type="checkbox" aria-label="Toggle wire tracing">
-                            <span class="switch-slider"></span>
-                        </div>
-                    </div>
                 </div>
                 <!-- Dark Mode Toggle -->
                 <button id="darkModeBtn" class="btn theme-toggle-btn" title="Toggle dark/light"
@@ -298,6 +285,19 @@
                     <iconify-icon icon="material-symbols:clear-all"></iconify-icon>
                     <span class="panel-content">Clear</span>
                 </button>
+                <!-- Wire-trace toggle -->
+                    <div class="switch-mode btn">
+                        <small class="switch-content">
+                            <iconify-icon icon="material-symbols:bolt"
+                                style="font-size:14px;color:#4facfe;"></iconify-icon>
+                            Trace
+                        </small>
+                        <div class="switch" id="traceWireBtn" title="Wire Trace ON/OFF" role="switch"
+                            aria-checked="false">
+                            <input type="checkbox" aria-label="Toggle wire tracing">
+                            <span class="switch-slider"></span>
+                        </div>
+                    </div>
             </div>
 
             <!-- ── EDIT SECTION ─────────────────────────────── -->
