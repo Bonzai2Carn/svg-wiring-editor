@@ -2399,6 +2399,35 @@ body:not(.dark-mode) .layer-drag-handle {
 }
 
 /* ============================================================
+   Committed measurement = a real annotation in the document.
+   Selectable and movable with the select tool, unlike the live
+   preview, which is transient system geometry.
+   ============================================================ */
+.measure-annotation {
+    cursor: inherit;
+}
+
+/* The group is the selectable unit; children must not swallow the hit
+   or you would select a single tick mark instead of the measurement. */
+.measure-annotation > * {
+    pointer-events: none;
+}
+
+.measure-annotation > line.measure-tape-final {
+    pointer-events: stroke;
+    stroke-width: 1;
+}
+
+.measure-annotation.se-selected .measure-tape {
+    stroke: #34d399;
+}
+
+.measure-preview,
+.measure-preview * {
+    pointer-events: none;
+}
+
+/* ============================================================
    MEASURE TOOL — SVG Canvas Overlays
    ============================================================ */
 
@@ -2485,8 +2514,9 @@ body:not(.dark-mode) .layer-drag-handle {
     stroke-width: 0.75;
 }
 
-/* #measureBtn active state */
-#measureBtn.active {
+/* #measureBtn / #tool_measure active state */
+#measureBtn.active,
+#tool_measure.active {
     background: rgba(0, 229, 255, 0.15) !important;
     border-color: #00e5ff !important;
     color: #00e5ff !important;

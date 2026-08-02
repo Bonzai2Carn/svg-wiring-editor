@@ -82,6 +82,7 @@ class MobileSVGEditor {
         this.initPropertyPanel();       // propertyPanel.js
         this.initGeometryEngine();      // geometryEngine.js  (spatial indices)
         this.initLabels();              // labels.js  (analysis provenance view)
+        this.initMeasureTool();         // measureTool.js  (measure as a draw tool)
 
         // ── viewBox-based zoom: recompute base on container resize ──
         if (typeof ResizeObserver !== 'undefined') {
@@ -235,7 +236,10 @@ class MobileSVGEditor {
                 this.showLayers();
             }
         });
-        $('#measureBtn').on('click',    () => this.toggleMeasureTool());
+        // The bottom control opens SETTINGS (units + calibration). The Edit
+        // toolbar's #tool_measure is what activates the tool. Two buttons,
+        // two jobs, which is the split this refactor is about.
+        $('#measureBtn').on('click',    () => this._showMeasureModal());
         $('#gridToggleBtn').on('click', () => this.toggleGrid());
         $('#snapToggleBtn').on('click', () => this.toggleSnap());
 
@@ -424,16 +428,18 @@ class MobileSVGEditor {
             if (unit !== 'px') $('#measureScaleUnitLabel').text(unit);
         });
 
+        // Calibration only. It records the drawing's scale and closes; it does
+        // NOT start the tool. Scale is a document setting you fix once, the
+        // measure tool is an action you repeat, and coupling them meant you
+        // could not measure twice without re-confirming the units.
         $('#measureModalOk').on('click', () => {
             const unit    = $('.measure-unit-btn.active').data('unit') || 'px';
-            const pxVal   = parseFloat($('#measurePxVal').val())   || 1;
-            const unitVal = parseFloat($('#measureUnitVal').val())  || 1;
-            this._measureUnit        = unit;
-            this._measurePxVal       = pxVal;
-            this._measureUnitVal     = unitVal;
-            this._measureScaleFactor = unit === 'px' ? null : (unitVal / pxVal);
+            const pxVal   = parseFloat($('#measurePxVal').val())  || 1;
+            const unitVal = parseFloat($('#measureUnitVal').val()) || 1;
+            this._measurePxVal   = pxVal;
+            this._measureUnitVal = unitVal;
+            this.setMeasureUnit(unit);
             $('#measureModal').removeClass('open');
-            this._startMeasuring();
         });
 
         $('#measureModalCancel').on('click', () => $('#measureModal').removeClass('open'));

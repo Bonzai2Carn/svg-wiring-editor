@@ -571,6 +571,17 @@
             <iconify-icon icon="material-symbols:route-outline"></iconify-icon>
             <span class="panel-content">Wire</span>
           </button>
+          <!-- Measure — a draw tool like any other: Esc cancels, Q locks,
+               and it hands back to Select after each measurement. -->
+          <button
+            class="btn draw-tool-btn"
+            id="tool_measure"
+            data-tool="measure"
+            title="Measure – click two points, or click a wire. Units set under Scale"
+          >
+            <iconify-icon icon="material-symbols:straighten-outline"></iconify-icon>
+            <span class="panel-content">Measure</span>
+          </button>
 
           <!-- Tool lock: keep the active tool after a draw instead of
                snapping back to Select -->
@@ -686,6 +697,50 @@
               "
             />
           </label>
+
+
+          <!-- Separator: measurement scale (a DOCUMENT setting, set once) -->
+          <span class="toolbar-sep">Scale</span>
+
+          <label
+            class="prop-label"
+            title="Measurement unit"
+            style="display: flex; align-items: center; gap: 4px; font-size: 11px"
+          >
+            <select
+              id="measureUnitSel"
+              style="
+                background: rgba(79, 172, 254, 0.12);
+                border: 1px solid rgba(79, 172, 254, 0.3);
+                border-radius: 4px;
+                color: inherit;
+                font-size: 11px;
+                padding: 2px 4px;
+              "
+            >
+              <option value="px">px</option>
+              <option value="mm">mm</option>
+              <option value="cm">cm</option>
+              <option value="m">m</option>
+              <option value="in">in</option>
+              <option value="ft">ft</option>
+            </select>
+          </label>
+
+          <button
+            class="btn"
+            id="measureCalibrateBtn"
+            title="Calibrate: tell the editor how many pixels equal one unit"
+          >
+            <iconify-icon icon="material-symbols:tune"></iconify-icon>
+            <span class="panel-content">Calibrate</span>
+          </button>
+
+          <span
+            id="measureScaleLabel"
+            style="font-size: 10px; opacity: 0.55; white-space: nowrap"
+            >uncalibrated</span
+          >
 
           <!-- Separator: canvas page background -->
           <span class="toolbar-sep">Background</span>
@@ -1423,6 +1478,7 @@
     <script src="src/js/features/highlights.js"></script>
     <script src="src/js/features/layers.js"></script>
     <script src="src/js/features/labels.js"></script>
+    <script src="src/js/features/measureTool.js"></script>
     <script src="src/js/features/history.js"></script>
     <script src="src/js/features/uiControls.js"></script>
     <script src="/assets/schema-editor/data/component-specs.js"></script>

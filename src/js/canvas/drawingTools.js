@@ -90,7 +90,7 @@ Object.assign(MobileSVGEditor.prototype, {
     // A tool is a one-shot action, not a mode: after it draws something it hands
     // the canvas back to select so the next click manipulates what was just made.
     // Q pins the tool for repeat drawing (Excalidraw's tool lock).
-    _DRAW_TOOLS: ['pen', 'line', 'rect', 'ellipse', 'polygon', 'text', 'wire'],
+    _DRAW_TOOLS: ['pen', 'line', 'rect', 'ellipse', 'polygon', 'text', 'wire', 'measure'],
 
     // Tools that manipulate existing objects rather than creating them.
     _OBJECT_TOOLS: ['select'],
@@ -130,6 +130,7 @@ Object.assign(MobileSVGEditor.prototype, {
             polygon: 'crosshair',
             text: 'text',
             wire: 'crosshair',
+            measure: 'crosshair',
         };
         this.$svgContainer.css('cursor', cursors[tool] || 'default');
 
@@ -137,6 +138,11 @@ Object.assign(MobileSVGEditor.prototype, {
         if (!this._DRAW_TOOLS.includes(tool)) {
             this._cancelDraw();
         }
+
+        // Measure keeps transient preview geometry on the canvas, so leaving the
+        // tool by ANY route (Esc, another tool, auto-revert) has to clear it.
+        if (tool === 'measure') this._measureBegin?.();
+        else                    this._measureEnd?.();
 
         // Wire endpoint style bar only shows while the wire tool is active
         this._toggleWireStyleBar?.(tool === 'wire');
@@ -152,6 +158,7 @@ Object.assign(MobileSVGEditor.prototype, {
             polygon: 'Polygon — Click each vertex, double-click to close',
             text:    'Text — Click to place, then type in the panel',
             wire:    'Wire — Click waypoints, dbl-click/Enter commits, Esc cancels. Pick endpoint style below',
+            measure: 'Measure — Click points, dbl-click/Enter finishes, Backspace undoes a point, Esc cancels. Click a wire to measure it',
         };
         if (silent) return;
         const suffix = (!this._toolLock && this._DRAW_TOOLS.includes(tool))
@@ -163,8 +170,7 @@ Object.assign(MobileSVGEditor.prototype, {
     // ── Main draw event binding ───────────────────────────────
     _bindDrawEvents() {
         this.$svgContainer.on('mousedown.draw', (e) => {
-            const drawTools = ['pen', 'line', 'rect', 'ellipse', 'polygon', 'text', 'wire'];
-            if (!drawTools.includes(this.activeTool)) return;
+            if (!this._DRAW_TOOLS.includes(this.activeTool)) return;
             if (this.activeTool === 'pen') return;   // pen uses pointer events (capture + coalescing)
             if (e.button !== 0) return;
             e.preventDefault();
@@ -180,10 +186,13 @@ Object.assign(MobileSVGEditor.prototype, {
                 case 'polygon': this._polygonClick(snapped); break;
                 case 'text': this._textPlace(snapped); break;
                 case 'wire': this._wireClick(snapped); break;
+                case 'measure': this._measureClick(snapped, e.target); break;
             }
         });
 
         $(document).on('mousemove.draw', (e) => {
+            // Measure previews between click A and click B, and its state is set
+            // on the first click, so the shared guard is correct for it too.
             if (!this._drawState) return;
             const pt = this.screenToSVG(e.clientX, e.clientY);
             const snapped = this.smartSnap(pt.x, pt.y);
@@ -193,6 +202,7 @@ Object.assign(MobileSVGEditor.prototype, {
                 case 'rect': this._rectMove(snapped); break;
                 case 'ellipse': this._ellipseMove(snapped); break;
                 case 'wire': this._wireMove(snapped); break;
+                case 'measure': this._measureMove(snapped); break;
             }
         });
 
@@ -213,6 +223,7 @@ Object.assign(MobileSVGEditor.prototype, {
             e.preventDefault();
             if (this.activeTool === 'polygon') this._polygonClose();
             if (this.activeTool === 'wire')    this._wireCommit(e.clientX, e.clientY);
+            if (this.activeTool === 'measure') this._measureCommit();
         });
 
         // Escape cancels; Enter commits; Backspace retracts last waypoint.
@@ -220,8 +231,14 @@ Object.assign(MobileSVGEditor.prototype, {
         // keydown handler in svgEditor.js, unconditionally, lock or no lock.)
         $(document).on('keydown.draw', (e) => {
             if (!this._drawState) return;
-            if (e.key === 'Escape') { e.preventDefault(); this._cancelDraw(); }
+            if (e.key === 'Escape') { e.preventDefault(); this._cancelDraw(); this._measureEnd?.(); }
             if (e.key === 'Enter' && this.activeTool === 'wire') { e.preventDefault(); this._wireCommit(); }
+            if (e.key === 'Enter' && this.activeTool === 'measure') { e.preventDefault(); this._measureCommit(); }
+            if (e.key === 'Backspace' && this.activeTool === 'measure') {
+                e.preventDefault();
+                this._measureRetract();
+                return;
+            }
             if (e.key === 'Backspace' && this.activeTool === 'wire' && this._drawState.points?.length > 1) {
                 e.preventDefault();
                 this._drawState.points.pop();

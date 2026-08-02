@@ -284,7 +284,12 @@ Object.assign(MobileSVGEditor.prototype, {
         // Single wire selected → show endpoint handles instead of bounding box.
         // The bounding box is meaningless for a 1px-wide line and its resize
         // handles apply scale() which makes stroke-width grow even with non-scaling-stroke.
-        if (this._selection.length === 1 && this._isWireElement(this._selection[0])) {
+        // Wires and measurements are both editable polylines, so both get node
+        // handles instead of a bounding box. A box around a 1px line is
+        // meaningless, and its scale handles would distort the geometry.
+        if (this._selection.length === 1 &&
+            (this._isWireElement(this._selection[0]) ||
+             this._isMeasureAnnotation?.(this._selection[0]))) {
             this._drawWireEndpointHandles(ctx, this._selection[0]);
             return;
         }
@@ -392,8 +397,12 @@ Object.assign(MobileSVGEditor.prototype, {
     // Endpoint handles (ep0, ep_last) at the termini — larger circles.
     // Breakpoint handles (bp_1, bp_2 …) at each intermediate bend — smaller.
     _drawWireEndpointHandles(ctx, el) {
-        // Document-local, NOT the raw `d` values — see _elToDoc.
-        const pts = this._wirePointsDoc(el);
+        // Document-local, NOT the raw `d` values — see _elToDoc. A measurement
+        // stores its vertices as data rather than in a `d`, so it has its own
+        // accessor; everything downstream is identical.
+        const pts = this._isMeasureAnnotation?.(el)
+            ? this._measureAnnPointsDoc(el)
+            : this._wirePointsDoc(el);
         if (!pts) return;
 
         // Project every wire point to screen space
@@ -702,7 +711,8 @@ Object.assign(MobileSVGEditor.prototype, {
         const before = this._captureFullState();
         this._lastSnappedPin = null; // reset so stale state from prior interactions doesn't leak
 
-        const isEndpoint = pointId === 'ep0' || pointId === 'ep_last';
+        const isEndpoint = (pointId === 'ep0' || pointId === 'ep_last') &&
+                           !this._isMeasureAnnotation?.(el);   // no pin anchoring for measurements
         this._handleDragActive = true;
 
         const onMove = (ev) => {
@@ -764,6 +774,21 @@ Object.assign(MobileSVGEditor.prototype, {
     // on a transformed wire writes the point to the wrong place.
     _moveWirePoint(el, pointId, x, y) {
         const tag = el.tagName?.toLowerCase();
+
+        // A measurement owns its vertex list, so moving a node means editing
+        // that list and re-rendering — which recomputes every derived label
+        // rather than leaving a stale distance behind.
+        if (this._isMeasureAnnotation?.(el)) {
+            const pts = this._measureAnnPoints(el);
+            if (!pts) return;
+            let idx;
+            if      (pointId === 'ep0')          idx = 0;
+            else if (pointId === 'ep_last')      idx = pts.length - 1;
+            else if (pointId.startsWith('bp_'))  idx = parseInt(pointId.slice(3), 10);
+            else return;
+            this.moveMeasurePoint(el, idx, x, y);
+            return;
+        }
 
         const inv = this._docToEl(el);
         if (!inv.isIdentity) {
@@ -2001,7 +2026,8 @@ Object.assign(MobileSVGEditor.prototype, {
             if (elMaxX < x1 || elMinX > x2 || elMaxY < y1 || elMinY > y2) return;
 
             // Prefer the top-level domain-symbol or user group over inner shapes
-            const target = el.closest('g[id^="group_"]') || el.closest('.domain-symbol') || el;
+            const target = el.closest('g[id^="group_"]') || el.closest('.domain-symbol') ||
+                           el.closest('.measure-annotation') || el;
             if (!seen.has(target)) {
                 seen.add(target);
                 hits.push(target);
@@ -2158,7 +2184,10 @@ Object.assign(MobileSVGEditor.prototype, {
 
             // Walk up to the parent domain-symbol OR user-created group so the
             // whole unit gets selected. Outermost user group wins (nested groups).
-            const symGroup = el.closest('.domain-symbol, g[id^="group_"]');
+            // .measure-annotation joins the list of things that select as a
+            // whole: clicking a tick mark should grab the measurement, not
+            // one of its lines.
+            const symGroup = el.closest('.domain-symbol, .measure-annotation, g[id^="group_"]');
             if (symGroup) {
                 el = symGroup;
                 let p = el.parentElement;
@@ -2226,6 +2255,20 @@ Object.assign(MobileSVGEditor.prototype, {
         //              → split + insert if target is a drawn wire path
         this.$svgDisplay.on('dblclick.canvas', (e) => {
             if (this.activeTool !== 'select') return;
+
+            // Measurement: double-click adds a vertex, the same gesture that cuts
+            // a wire. The measurement is a polyline, so it splits like one.
+            const measured = e.target.closest?.('.measure-annotation');
+            if (measured) {
+                e.preventDefault();
+                e.stopPropagation();
+                const p = this.screenToSVG(e.clientX, e.clientY);
+                if (this.splitMeasureAt?.(measured, p)) {
+                    this.selectEl(measured);
+                    this.showToast('Node added — drag it to reshape the measurement', 'success');
+                }
+                return;
+            }
 
             // Wire: split at click point and open symbol picker to insert in-series
             if (e.target.tagName === 'path' && e.target.getAttribute('data-geo-class') === 'wire') {
