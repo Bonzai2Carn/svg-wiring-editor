@@ -143,15 +143,15 @@ Object.assign(MobileSVGEditor.prototype, {
 
         // Quick usage hint per tool (Excalidraw-style)
         const hints = {
-            select:  'Select — click an item, drag empty canvas to marquee, dbl-click enters a group. Hold Space to pan',
-            hand:    'Hand — drag anywhere to pan the canvas (H). Holding Space picks this up temporarily',
-            pen:     'Pen — draw freehand; strokes smooth on release. Esc cancels',
-            line:    'Line — drag from start to end; snaps to grid and edges',
-            rect:    'Rectangle — drag a corner to the opposite corner',
-            ellipse: 'Ellipse — drag from center outward',
-            polygon: 'Polygon — click each vertex, double-click to close',
-            text:    'Text — click to place, then type in the panel',
-            wire:    'Wire — click waypoints, dbl-click/Enter commits, Esc cancels. Pick endpoint style below',
+            select:  'Select — Click an item, drag empty canvas to marquee, dbl-click enters a group. Hold Space to pan',
+            hand:    'Hand — Drag anywhere to pan the canvas (H). Holding Space picks this up temporarily',
+            pen:     'Pen — Draw freehand; strokes smooth on release. Esc cancels',
+            line:    'Line — Drag from start to end; snaps to grid and edges',
+            rect:    'Rectangle — Drag a corner to the opposite corner',
+            ellipse: 'Ellipse — Drag from center outward',
+            polygon: 'Polygon — Click each vertex, double-click to close',
+            text:    'Text — Click to place, then type in the panel',
+            wire:    'Wire — Click waypoints, dbl-click/Enter commits, Esc cancels. Pick endpoint style below',
         };
         if (silent) return;
         const suffix = (!this._toolLock && this._DRAW_TOOLS.includes(tool))
