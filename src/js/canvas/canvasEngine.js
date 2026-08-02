@@ -554,6 +554,8 @@ Object.assign(MobileSVGEditor.prototype, {
             return;
         }
 
+        this._handleDragActive = true;
+
         const startX = clientX;
         const startY = clientY;
         const startBB = this._getSelectionBBoxWorld();
@@ -599,6 +601,7 @@ Object.assign(MobileSVGEditor.prototype, {
 
         const onUp = () => {
             $(document).off('mousemove.handle mouseup.handle');
+            this._handleDragActive = false;
             const after = this._captureFullState();
             this.pushHistory(type === 'rotate' ? 'Rotate' : 'Resize', before, after);
             this._refreshPropertyPanel();
@@ -615,6 +618,7 @@ Object.assign(MobileSVGEditor.prototype, {
         this._lastSnappedPin = null; // reset so stale state from prior interactions doesn't leak
 
         const isEndpoint = pointId === 'ep0' || pointId === 'ep_last';
+        this._handleDragActive = true;
 
         const onMove = (ev) => {
             const pt = this.screenToSVG(ev.clientX, ev.clientY);
@@ -635,6 +639,7 @@ Object.assign(MobileSVGEditor.prototype, {
 
         const onUp = () => {
             $(document).off('mousemove.handle mouseup.handle');
+            this._handleDragActive = false;
             this._clearPinSnap?.();
             // Re-anchor or un-anchor the endpoint based on where it was dropped.
             if (isEndpoint) {
@@ -877,6 +882,7 @@ Object.assign(MobileSVGEditor.prototype, {
     _startMoveSelected(startClientX, startClientY) {
         if (!this._selection.length) return;
         this._moveActive = true;
+        $('body').addClass('gx-dragging-move');
         const before = this._captureFullState();
         const svgStart = this.screenToSVG(startClientX, startClientY);
 
@@ -1006,6 +1012,7 @@ Object.assign(MobileSVGEditor.prototype, {
         const onUp = () => {
             $(document).off('mousemove.move mouseup.move');
             this._moveActive = false;
+            $('body').removeClass('gx-dragging-move');
             this._removeSnapGuides();
             if (pendingWireSnap) this._commitWireSnap(pendingWireSnap, pendingWireSnap.symEl);
             const after = this._captureFullState();
@@ -1171,25 +1178,58 @@ Object.assign(MobileSVGEditor.prototype, {
         return path;
     },
 
+    // Re-anchor one end of a polyline to newPt, keeping every other vertex.
+    // The neighbouring vertex is carried along the axis the terminal segment ran
+    // on, so an orthogonal wire stays orthogonal instead of going diagonal.
+    _reanchorWireEnd(pts, which, newPt) {
+        const EPS = 0.5;
+        const i = which === 'from' ? 0 : pts.length - 1;
+        const j = which === 'from' ? 1 : pts.length - 2;
+        const old = pts[i];
+        pts[i] = { x: newPt.x, y: newPt.y };
+        if (j < 0 || j >= pts.length) return pts;
+        const nb = pts[j];
+        const wasVertical   = Math.abs(nb.x - old.x) < EPS;
+        const wasHorizontal = Math.abs(nb.y - old.y) < EPS;
+        // Diagonal terminal segment: nothing to preserve, leave the neighbour be.
+        if (wasVertical)   pts[j] = { x: newPt.x, y: nb.y };
+        else if (wasHorizontal) pts[j] = { x: nb.x, y: newPt.y };
+        return pts;
+    },
+
+    // A symbol moved or rotated — bring its attached wires along.
+    //
+    //   This used to throw the whole path away and rebuild it with _smartRoute.
+    //   That is fine for a wire that is only ever a straight pin-to-pin hop, and
+    //   destructive for every other one: rotating a symbol 90 degrees discarded
+    //   every bend the user had placed and replaced them with the router's guess,
+    //   which is why wires appeared to "mess up" on rotate. The pin moved a few
+    //   units; the wire redrew itself completely.
+    //
+    //   A symbol transform is new information about ONE point on the wire, so it
+    //   should change one point on the wire. Re-anchor the affected end(s), keep
+    //   the rest. Wholesale re-routing is still available, but only where the user
+    //   explicitly asks for it (Ctrl+Shift+L, Straighten Wires).
     _updateAttachedWire(wirePath, movedSymId) {
         const fromSymId = wirePath.getAttribute('data-from-sym');
         const toSymId   = wirePath.getAttribute('data-to-sym');
 
         const d = wirePath.getAttribute('d') || '';
-        const coords = [...d.matchAll(/[ML]\s*([\d.eE+\-]+)[,\s]+([\d.eE+\-]+)/g)]
+        let pts = [...d.matchAll(/[ML]\s*([\d.eE+\-]+)[,\s]+([\d.eE+\-]+)/g)]
             .map(m => ({ x: parseFloat(m[1]), y: parseFloat(m[2]) }));
-        const staticFrom = coords[0]                 || { x: 0, y: 0 };
-        const staticTo   = coords[coords.length - 1] || { x: 0, y: 0 };
+        if (pts.length < 2) return;
 
         const fromPt = fromSymId
-            ? (this._resolveSymPinPos(fromSymId, wirePath.getAttribute('data-from-pin') || '0') || staticFrom)
-            : staticFrom;
+            ? this._resolveSymPinPos(fromSymId, wirePath.getAttribute('data-from-pin') || '0')
+            : null;
         const toPt = toSymId
-            ? (this._resolveSymPinPos(toSymId,   wirePath.getAttribute('data-to-pin')   || '0') || staticTo)
-            : staticTo;
+            ? this._resolveSymPinPos(toSymId, wirePath.getAttribute('data-to-pin') || '0')
+            : null;
 
-        // Both endpoints changed or simple 2-point wire: full re-route
-        wirePath.setAttribute('d', this._smartRoute(fromPt, toPt));
+        if (fromPt) pts = this._reanchorWireEnd(pts, 'from', fromPt);
+        if (toPt)   pts = this._reanchorWireEnd(pts, 'to',   toPt);
+
+        wirePath.setAttribute('d', this._polylinePath(pts));
     },
 
     // ── Feature 3: Alt+click wire → branch new wire from that point ──
@@ -1824,6 +1864,20 @@ Object.assign(MobileSVGEditor.prototype, {
 
     // ── Canvas Event Binding ──────────────────────────────────
 
+    // True when the pointer is over something a drag would actually MOVE.
+    // Backdrop (page rect, grid, guides, any [data-se-system] node) is not an
+    // object; neither is a locked element, since dragging it is refused anyway
+    // and a move cursor there would be a promise the editor won't keep.
+    _objectUnderPointer(target) {
+        if (!target || !target.closest) return false;
+        if (target.closest('[data-se-system="true"]')) return false;
+        if (target.id === '_gridLayer' || target.id === '_canvasBg') return false;
+        if (target.classList?.contains('snap-guide')) return false;
+        if (target.classList?.contains('draw-preview')) return false;
+        if (target.closest('[data-locked="true"]')) return false;
+        return !!target.closest('#_cameraRotGroup > *');
+    },
+
     // Bidirectional resize cursors per handle id.  'rotate' uses crosshair.
     _HANDLE_CURSORS: {
         nw: 'nwse-resize', n: 'ns-resize', ne: 'nesw-resize',
@@ -1861,17 +1915,35 @@ Object.assign(MobileSVGEditor.prototype, {
                 this._clearNetHighlight();
         });
 
-        // Cursor update on hover — changes to resize/rotate cursor over overlay handles
+        // Cursor on hover. The cursor's job is to answer "what will a drag from
+        // here do?" before the user commits to finding out:
+        //   over a resize/rotate handle → that handle's direction
+        //   over a draggable object     → move
+        //   over empty canvas           → default (a drag marquees, not moves)
+        // Set on the container, which is why the SVG shapes use cursor:inherit.
         this.$svgDisplay.on('mousemove.canvasCursor', (e) => {
-            if (this.activeTool !== 'select' || !this._useCanvasHandles) return;
-            const handleId = this._hitTestOverlayHandles(e.clientX, e.clientY);
-            const cursor = handleId ? (this._HANDLE_CURSORS[handleId] || 'default') : '';
+            if (this.activeTool !== 'select') return;
+            // A drag in progress owns the cursor. Freezing here is also what keeps
+            // the handle cursor pinned for the length of a resize: the container
+            // simply holds the value this handler last wrote.
+            if (this.isDragging || this._moveActive || this._handleDragActive) return;
+            let cursor = '';
+            if (this._useCanvasHandles) {
+                const handleId = this._hitTestOverlayHandles(e.clientX, e.clientY);
+                // Wire endpoint/bend handles have no directional cursor — they move.
+                if (handleId) cursor = this._HANDLE_CURSORS[handleId] || 'move';
+            }
+            if (!cursor && this._objectUnderPointer(e.target)) cursor = 'move';
             this.$svgContainer[0].style.cursor = cursor;
         });
 
         // Click on canvas — select element or deselect
         this.$svgDisplay.on('mousedown.canvas', (e) => {
-            if (this.activeTool !== 'select') return;
+            if (!this._isObjectTool()) return;
+            // Left button only. Middle mouse is the universal pan gesture and must
+            // reach startDrag untouched — without this it selected whatever it
+            // landed on, or cleared the selection when it landed on background.
+            if (e.button !== 0) return;
 
             // Step 10: Canvas handle hit-test check
             if (this._useCanvasHandles) {
@@ -1893,10 +1965,11 @@ Object.assign(MobileSVGEditor.prototype, {
                 target.classList.contains('draw-preview') ||
                 target.closest('.selection-handle-group');
 
-            // Plain drag on background → marquee selection (Excalidraw/Figma convention;
-            // Ctrl/Meta+drag still works as an alias). Space+drag / middle-mouse pans.
+            // Plain drag on background → marquee selection (Excalidraw/Figma
+            // convention). Space swaps to the hand tool outright, so this handler
+            // has already bailed by then; middle-mouse pans via startDrag.
             if (isIgnored && !target.closest('.selection-handle-group') &&
-                e.button === 0 && !this._spaceHeld) {
+                e.button === 0) {
                 e.preventDefault();
                 e.stopPropagation();
                 this._startMarquee(e);
@@ -2020,9 +2093,9 @@ Object.assign(MobileSVGEditor.prototype, {
             this._editSymbolText(textEl);
         });
 
-        // Arrow key nudge
+        // Arrow key nudge — the keyboard equivalent of a move, so both object tools
         $(document).on('keydown.canvas', (e) => {
-            if (this.activeTool !== 'select') return;
+            if (!this._isObjectTool()) return;
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
             if (!this._selection.length) return;
 

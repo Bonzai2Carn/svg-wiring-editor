@@ -22,6 +22,53 @@ Object.assign(MobileSVGEditor.prototype, {
         this.$bottomControls.toggleClass('expanded');
     },
 
+    // ── Canvas background colour ─────────────────────────────
+    //
+    //   Edits the fill of #_canvasBg, the page rect. Not a CSS/editor-chrome
+    //   setting: the page is part of the document, so its colour is part of the
+    //   document and travels with export, save and round-trip. Dark mode is the
+    //   editor chrome; this is the paper.
+
+    setCanvasBackground(color) {
+        const bg = this.$svgDisplay?.[0]?.querySelector('#_canvasBg');
+        if (!bg) {
+            this.showToast('No canvas page — create one with New Canvas', 'error');
+            return;
+        }
+        const before = this._captureFullState();
+        if (color === 'none') {
+            bg.setAttribute('fill', 'none');
+            // The drop shadow traces the fill; on a transparent page it would
+            // hang in space around nothing.
+            bg.removeAttribute('filter');
+        } else {
+            bg.setAttribute('fill', color);
+            bg.setAttribute('filter', 'url(#_pageShadow)');
+        }
+        this.pushHistory('Canvas Background', before, this._captureFullState());
+        this._syncCanvasBgControls();
+    },
+
+    // Reflect the live page colour back into the picker + swatch row. Called on
+    // load/switch too, so the control never lies about what the document says.
+    _syncCanvasBgControls() {
+        const bg = this.$svgDisplay?.[0]?.querySelector('#_canvasBg');
+        const fill = bg?.getAttribute('fill') || '';
+        if (/^#[0-9a-f]{6}$/i.test(fill)) $('#canvasBgColor').val(fill.toLowerCase());
+        $('#canvasBgSwatches .canvas-bg-swatch').each((_, btn) => {
+            $(btn).toggleClass('active',
+                (btn.dataset.bg || '').toLowerCase() === fill.toLowerCase());
+        });
+    },
+
+    bindCanvasBackgroundControls() {
+        $('#canvasBgColor').on('input', (e) => this.setCanvasBackground(e.target.value));
+        $(document).on('click', '.canvas-bg-swatch', (e) => {
+            const c = e.currentTarget.dataset.bg;
+            if (c) this.setCanvasBackground(c);
+        });
+    },
+
     // ── Dark Mode ────────────────────────────────────────────
 
     toggleDarkMode() {

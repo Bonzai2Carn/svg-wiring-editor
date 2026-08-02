@@ -220,21 +220,19 @@ Object.assign(MobileSVGEditor.prototype, {
 
     // ── Mouse Drag ───────────────────────────────────────────
 
+    // Panning has exactly two triggers, and neither is tool-specific plumbing:
+    //   • the hand tool (which Space temporarily activates — see svgEditor's
+    //     keydown handler, the single owner of that swap)
+    //   • middle mouse, anywhere, in any tool
+    // There used to be a third path: a special "select + space + background"
+    // branch that re-derived what the hand tool already does, complete with its
+    // own hand-maintained list of which element ids count as background. Space
+    // now simply IS the hand tool, so that branch is gone and there is one
+    // definition of panning instead of two that could drift apart.
     startDrag(event) {
-        if (this.activeTool !== 'select' && this.activeTool !== 'hand') return;
         if (this._textEditActive) return;       // text input open — lock camera
-
-        if (this.activeTool === 'select') {
-            // Plain background drag now starts a marquee (canvasEngine); panning
-            // requires Space held or middle mouse — Figma/Excalidraw convention.
-            if (!this._spaceHeld && event.button !== 1) return;
-
-            const target = event.target;
-            const targetId = target.id || '';
-            const isBackground = targetId === 'svgWrapper' || targetId === '_gridLayer' || targetId === 'svgContainer' || target.tagName.toLowerCase() === 'svg' || target.tagName.toLowerCase() === 'html';
-            if (!isBackground) return;
-        }
-        // Hand tool: any drag anywhere pans — no background/space requirement.
+        const middleMouse = event.button === 1;
+        if (this.activeTool !== 'hand' && !middleMouse) return;
 
         this.isDragging = true;
         this.dragStart = {
@@ -244,12 +242,11 @@ Object.assign(MobileSVGEditor.prototype, {
             ty: this.camera.ty,
             rotation: this.currentRotation,
         };
-        this.$svgContainer.css('cursor', 'grabbing');
+        $('body').addClass('gx-dragging-pan');
     },
 
     drag(event) {
         if (!this.isDragging) return;
-        if (this.activeTool !== 'select' && this.activeTool !== 'hand') return;
 
         const dX = event.clientX - this.dragStart.x;
         const dY = event.clientY - this.dragStart.y;
@@ -266,7 +263,8 @@ Object.assign(MobileSVGEditor.prototype, {
     endDrag() {
         if (!this.isDragging) return;
         this.isDragging = false;
-        this.$svgContainer.css('cursor', this.activeTool === 'hand' ? 'grab' : 'default');
+        $('body').removeClass('gx-dragging-pan');
+        this.$svgContainer.css('cursor', this.activeTool === 'hand' ? 'grab' : '');
     },
 
     // ── Wheel Zoom at cursor position ────────────────────────

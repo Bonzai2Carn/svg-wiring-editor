@@ -111,19 +111,38 @@ Object.assign(MobileSVGEditor.prototype, {
     },
 });
 
-/* First-run canvas hint: retire as soon as any user content reaches the
-   canvas by any path (drawing, symbol stamp, file load, OS restore).
+/* First-run canvas hint: visible only while the canvas is genuinely empty.
    Lives here because every editor page loads history.js; pages without
-   the hint div no-op. */
+   the hint div no-op.
+
+   The old check asked "is there an element matching [id^=el_], .domain-symbol
+   or [data-geo-class]?" — a whitelist of things the DRAWING TOOLS produce. So
+   anything arriving by another route (a loaded raster <image>, an imported SVG
+   whose elements are not yet classified, a pasted <g>) counted as nothing, and
+   the hint sat on top of real artwork. It also called mo.disconnect() after the
+   first hide, so it could never come back on a genuinely emptied canvas.
+
+   Inverted: content is anything in the content root that is NOT editor
+   infrastructure. Blacklisting the handful of system nodes we own is knowable;
+   whitelisting every shape a user might load is not. */
 (function () {
-    const hint = document.getElementById('canvasFirstRunHint');
+    const hint  = document.getElementById('canvasFirstRunHint');
     const svgEl = document.getElementById('svgDisplay');
     if (!hint || !svgEl) return;
-    const hasContent = () =>
-        svgEl.querySelector('[id^="el_"], .domain-symbol, [data-geo-class]');
-    if (hasContent()) { hint.remove(); return; }
-    const mo = new MutationObserver(() => {
-        if (hasContent()) { hint.remove(); mo.disconnect(); }
-    });
-    mo.observe(svgEl, { childList: true, subtree: true });
+
+    const SYSTEM = '#_gridLayer, #_gridDefs, #_canvasBg, [data-se-system="true"], ' +
+                   '.snap-guide, .draw-preview, .selection-handle-group';
+
+    const hasContent = () => {
+        const root = svgEl.querySelector('#_cameraRotGroup') || svgEl;
+        return Array.from(root.children).some(el =>
+            !el.matches(SYSTEM) && el.tagName !== 'defs');
+    };
+
+    const sync = () => { hint.style.display = hasContent() ? 'none' : ''; };
+
+    sync();
+    // Stays connected for the life of the page: a New Canvas or a delete-all
+    // should bring the hint back, not leave a blank canvas with no guidance.
+    new MutationObserver(sync).observe(svgEl, { childList: true, subtree: true });
 })();

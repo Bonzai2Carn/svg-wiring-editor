@@ -92,6 +92,11 @@ Object.assign(MobileSVGEditor.prototype, {
     // Q pins the tool for repeat drawing (Excalidraw's tool lock).
     _DRAW_TOOLS: ['pen', 'line', 'rect', 'ellipse', 'polygon', 'text', 'wire'],
 
+    // Tools that manipulate existing objects rather than creating them.
+    _OBJECT_TOOLS: ['select'],
+
+    _isObjectTool() { return this._OBJECT_TOOLS.includes(this.activeTool); },
+
     _revertToSelectTool() {
         if (this._toolLock) return;
         if (this.activeTool === 'select') return;
@@ -138,8 +143,8 @@ Object.assign(MobileSVGEditor.prototype, {
 
         // Quick usage hint per tool (Excalidraw-style)
         const hints = {
-            select:  'Select — click an item, drag empty canvas to marquee, dbl-click enters a group. Space+drag pans',
-            hand:    'Hand — drag anywhere to pan the canvas (H)',
+            select:  'Select — click an item, drag empty canvas to marquee, dbl-click enters a group. Hold Space to pan',
+            hand:    'Hand — drag anywhere to pan the canvas (H). Holding Space picks this up temporarily',
             pen:     'Pen — draw freehand; strokes smooth on release. Esc cancels',
             line:    'Line — drag from start to end; snaps to grid and edges',
             rect:    'Rectangle — drag a corner to the opposite corner',
@@ -149,7 +154,7 @@ Object.assign(MobileSVGEditor.prototype, {
             wire:    'Wire — click waypoints, dbl-click/Enter commits, Esc cancels. Pick endpoint style below',
         };
         if (silent) return;
-        const suffix = (!this._toolLock && tool !== 'select' && tool !== 'hand')
+        const suffix = (!this._toolLock && this._DRAW_TOOLS.includes(tool))
             ? '  ·  Q locks the tool for repeat draws'
             : '';
         this.showToast((hints[tool] || tool) + suffix, 'success');

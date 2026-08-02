@@ -293,11 +293,10 @@ class MobileSVGEditor {
             this.$svgWrapper.css('perspective', val + 'px');
         });
 
-        // Mouse drag (only in select mode — drawing tools handle their own)
-        this.$svgContainer.on('mousedown', (e) => {
-            if (this.activeTool === 'select' || this.activeTool === 'hand') this.startDrag(e);
-        });
-        $(document).on('mousemove', (e) => { if (this.activeTool === 'select' || this.activeTool === 'hand') this.drag(e); });
+        // Camera drag. startDrag decides whether this gesture is a pan at all
+        // (hand tool or middle mouse); no tool filtering belongs out here.
+        this.$svgContainer.on('mousedown', (e) => this.startDrag(e));
+        $(document).on('mousemove', (e) => this.drag(e));
         $(document).on('mouseup',  ()  => this.endDrag());
 
         // Wheel zoom
@@ -309,7 +308,7 @@ class MobileSVGEditor {
 
             if (e.key === 'Shift')   this.isShiftHeld = true;
             if (e.key === 'Control' || e.key === 'Meta') this.isCtrlHeld = true;
-            if (e.key === ' ') { e.preventDefault(); this._spaceHeld = true; }
+            if (e.key === ' ' && !this._spaceHeld) { e.preventDefault(); this._beginSpacePan(); }
 
             const ctrl = e.ctrlKey || e.metaKey;
             const key  = e.key.toLowerCase();
@@ -362,8 +361,11 @@ class MobileSVGEditor {
         $(document).on('keyup', (e) => {
             if (e.key === 'Shift')   this.isShiftHeld = false;
             if (e.key === 'Control' || e.key === 'Meta') this.isCtrlHeld = false;
-            if (e.key === ' ') this._spaceHeld = false;
+            if (e.key === ' ') this._endSpacePan();
         });
+
+        // Releasing Space outside the window never fires keyup on it
+        $(window).on('blur', () => this._endSpacePan());
 
         // Accordion toggle — auto-close siblings
         $(document).on('click', '.accordion.slide-bar', function () {
@@ -462,6 +464,9 @@ class MobileSVGEditor {
         // Tool lock toggle — mirrors the Q shortcut
         $('#toolLockBtn').on('click', () => this.toggleToolLock());
 
+        // Canvas page background colour picker + preset swatches
+        this.bindCanvasBackgroundControls();
+
         // Smooth Trace toggle
         $('#smoothTraceBtn').on('click', () => {
             this._smoothTrace = !this._smoothTrace;
@@ -484,17 +489,45 @@ class MobileSVGEditor {
         });
     }
 
+    // ── Space = temporary hand tool ───────────────────────────
+    //
+    //   Space used to set a _spaceHeld flag that half a dozen call sites then
+    //   consulted to decide whether to pan instead of doing their normal thing.
+    //   That is the hand tool's job description, written out a second time.
+    //   Now Space just activates the hand tool and releasing Space puts the
+    //   previous one back, so "pan" has exactly one implementation.
+    //
+    //   Skipped mid-draw: switching tools calls _cancelDraw, and pressing Space
+    //   halfway through a polygon should not discard it.
+
+    _beginSpacePan() {
+        this._spaceHeld = true;
+        if (this._drawState) return;
+        if (this.activeTool === 'hand') return;
+        this._toolBeforeSpace = this.activeTool;
+        this.setActiveTool('hand', { silent: true });
+    }
+
+    _endSpacePan() {
+        if (!this._spaceHeld) return;
+        this._spaceHeld = false;
+        if (!this._toolBeforeSpace) return;
+        const prev = this._toolBeforeSpace;
+        this._toolBeforeSpace = null;
+        this.setActiveTool(prev, { silent: true });
+    }
+
     // ── New Canvas ────────────────────────────────────────────
     _showNewCanvasModal() {
         $('#newCanvasModal').addClass('open');
     }
 
-    _createNewCanvas() {
-        const w = parseInt($('#newCanvasW').val(), 10) || 1200;
-        const h = parseInt($('#newCanvasH').val(), 10) || 800;
-        const name = $('#newCanvasName').val().trim() || 'New Canvas';
-
-        const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}">
+    // The blank-page template. #_canvasBg IS the canvas — the printable page, the
+    // export viewport. #svgDisplay is the infinite surface it floats on, and always
+    // fills its wrapper at 100%. Keeping those two ideas separate is the whole
+    // point: you can draw outside the page, you just won't export it.
+    _blankCanvasSvg(w, h) {
+        return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}">
   <!-- Canvas page background: white so it stands out from the dark editor -->
   <rect id="_canvasBg" width="${w}" height="${h}" fill="white"
     stroke="rgba(0,0,0,0.15)" stroke-width="1"
@@ -506,6 +539,29 @@ class MobileSVGEditor {
     </filter>
   </defs>
 </svg>`;
+    }
+
+    // Boot state. Without this the editor opened onto a bare #svgDisplay still
+    // wearing its hard-coded 1200x800 markup and carrying no page rect at all, so
+    // "first contact" behaved unlike every subsequent load.
+    _mountDefaultCanvas() {
+        if (this.displays.length) return;
+        this.displays.push({
+            id: `disp_${Date.now()}`,
+            name: 'Untitled Canvas',
+            svgContent: this._blankCanvasSvg(1200, 800),
+        });
+        this._suppressMountToast = true;
+        try { this.switchDisplay(0); } finally { this._suppressMountToast = false; }
+        if (!this._grid.visible) this.toggleGrid();
+    }
+
+    _createNewCanvas() {
+        const w = parseInt($('#newCanvasW').val(), 10) || 1200;
+        const h = parseInt($('#newCanvasH').val(), 10) || 800;
+        const name = $('#newCanvasName').val().trim() || 'New Canvas';
+
+        const svgContent = this._blankCanvasSvg(w, h);
 
         const firstNewIdx = this.displays.length;
         this.displays.push({

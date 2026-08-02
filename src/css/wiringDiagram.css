@@ -10,7 +10,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background-color: #fff;
+    /* background-color: #fff; */
     image-rendering: optimizeQuality;
     shape-rendering: geometricPrecision;
     text-rendering: geometricPrecision;
@@ -40,7 +40,10 @@
 #svgDisplay ellipse,
 #svgDisplay rect {
     transition: stroke 0.25s ease, fill 0.25s ease, filter 0.25s ease;
-    cursor: pointer;
+    /* inherit, not pointer: the cursor says what the NEXT drag will do, and only
+       the container knows that (tool + hover + handle hit-test). A hard-coded
+       pointer here won on specificity and made everything look like a link. */
+    cursor: inherit;
     /* Keep stroke width in screen pixels at all zoom levels — prevents
        stroke-width:1 looking like stroke-width:5 when zoomed in 5×. */
     vector-effect: non-scaling-stroke;
@@ -124,7 +127,7 @@
    ============================================================ */
 .wire-hitbox {
     pointer-events: stroke;
-    cursor: pointer;
+    cursor: inherit;
     stroke-width: 8px;
     stroke-opacity: 0 !important;
     fill: none;
@@ -135,9 +138,25 @@
    ============================================================ */
 .component-hitbox {
     pointer-events: all;
-    cursor: pointer;
+    cursor: inherit;
     fill-opacity: 0 !important;
     stroke-opacity: 0 !important;
+}
+
+/* ============================================================
+   Drag-state cursors.
+   Once a drag is under way the cursor must stop reacting to whatever
+   happens to be under the pointer — it reports the gesture in progress,
+   not the element being crossed. Hence the body-level override.
+   ============================================================ */
+body.gx-dragging-move,
+body.gx-dragging-move * {
+    cursor: move !important;
+}
+
+body.gx-dragging-pan,
+body.gx-dragging-pan * {
+    cursor: grabbing !important;
 }
 
 /* ============================================================
@@ -451,6 +470,53 @@
 
 body:not(.dark-mode) .toolbar-sep {
     color: rgba(0, 0, 0, 0.3);
+}
+
+/* ============================================================
+   Canvas background preset swatches
+   ============================================================ */
+.canvas-bg-swatches {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    flex-shrink: 0;
+}
+
+.canvas-bg-swatch {
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border-radius: 3px;
+    cursor: pointer;
+    background: var(--sw, #fff);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+body:not(.dark-mode) .canvas-bg-swatch {
+    border-color: rgba(0, 0, 0, 0.25);
+}
+
+.canvas-bg-swatch:hover {
+    transform: scale(1.15);
+}
+
+.canvas-bg-swatch.active {
+    border-color: #4facfe;
+    box-shadow: 0 0 0 2px rgba(79, 172, 254, 0.35);
+}
+
+/* Transparent preset: the standard "no colour" diagonal slash */
+.canvas-bg-swatch.is-none {
+    background:
+        linear-gradient(
+            to top right,
+            transparent calc(50% - 1px),
+            #ef4444 calc(50% - 1px),
+            #ef4444 calc(50% + 1px),
+            transparent calc(50% + 1px)
+        ),
+        repeating-conic-gradient(#cbd5e1 0% 25%, #f8fafc 0% 50%) 0 0 / 8px 8px;
 }
 
 /* ============================================================

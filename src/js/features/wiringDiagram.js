@@ -115,6 +115,19 @@ Object.assign(MobileSVGEditor.prototype, {
         if ($('#timelinePanel').hasClass('open')) this.buildTimeline();
     },
 
+    // viewBox string describing the page rect (#_canvasBg), or null when the
+    // active document has no page — e.g. a plain imported SVG.
+    _pageViewBox() {
+        const bg = this.$svgDisplay?.[0]?.querySelector('#_canvasBg');
+        if (!bg) return null;
+        const x = parseFloat(bg.getAttribute('x')) || 0;
+        const y = parseFloat(bg.getAttribute('y')) || 0;
+        const w = parseFloat(bg.getAttribute('width'));
+        const h = parseFloat(bg.getAttribute('height'));
+        if (!isFinite(w) || !isFinite(h) || w <= 0 || h <= 0) return null;
+        return `${x} ${y} ${w} ${h}`;
+    },
+
     // ── Clean SVG serializer: content only, no camera/grid infrastructure ──
     // Lifts user elements out of _cameraRotGroup and uses originalViewBox
     // so the output can round-trip through _mountParsedSvg without data loss.
@@ -124,7 +137,10 @@ Object.assign(MobileSVGEditor.prototype, {
         const contentRoot = this._contentRoot;
         const NS = this.SVG_NS;
 
-        const vb = this.originalViewBox || '0 0 1200 800';
+        // The page rect is the export viewport. #svgDisplay is the infinite
+        // surface — its viewBox drifts with fit/zoom and is not what you meant
+        // to export. Fall back to originalViewBox for imported SVGs with no page.
+        const vb = this._pageViewBox() || this.originalViewBox || '0 0 1200 800';
         const tempSvg = document.createElementNS(NS, 'svg');
         tempSvg.setAttribute('xmlns', NS);
         tempSvg.setAttribute('viewBox', vb);
@@ -428,7 +444,10 @@ Object.assign(MobileSVGEditor.prototype, {
         setTimeout(() => this.fitToView(), 80);
 
         this.updateMiniMap?.();
-        this.showToast(toastMsg, 'success');
+        // Point the background picker at the page this document actually has
+        this._syncCanvasBgControls?.();
+        // Boot mount is not news — nobody needs "Active: Untitled Canvas" on load.
+        if (toastMsg && !this._suppressMountToast) this.showToast(toastMsg, 'success');
         // this.closeSidePanel();
 
         // Re-attach the MutationObserver to the freshly-created _cameraRotGroup.
