@@ -353,6 +353,8 @@ class MobileSVGEditor {
                     case 'e': e.preventDefault(); this.setActiveTool('ellipse'); break;
                     case 'p': e.preventDefault(); this.setActiveTool('pen');     break;
                     case 't': e.preventDefault(); this.setActiveTool('text');    break;
+                    // Not a tool — pins the current one so it survives a commit
+                    case 'q': e.preventDefault(); this.toggleToolLock();         break;
                 }
             }
         });
@@ -456,6 +458,9 @@ class MobileSVGEditor {
             const tool = $(e.currentTarget).data('tool');
             if (tool) this.setActiveTool(tool);
         });
+
+        // Tool lock toggle — mirrors the Q shortcut
+        $('#toolLockBtn').on('click', () => this.toggleToolLock());
 
         // Smooth Trace toggle
         $('#smoothTraceBtn').on('click', () => {

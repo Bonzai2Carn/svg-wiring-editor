@@ -17,10 +17,6 @@ Object.assign(MobileSVGEditor.prototype, {
 
     setZoom(zoom) {
         const z = Number(zoom);
-        if (this._isViewportLocked()) {
-            this.$zoomSlider.val(this.camera.zoom); // snap back
-            return;
-        }
         this.camera.setZoom(z);
         this.$zoomSlider.val(z);
         $('#zoomValue').text(z.toFixed(1));
@@ -29,10 +25,6 @@ Object.assign(MobileSVGEditor.prototype, {
 
     setRotation(rotation) {
         let r = Number(rotation);
-        if (this._isViewportLocked()) {
-            this.$rotationSlider.val(this.camera.rotation);
-            return;
-        }
         this.camera.setRotation(r);
         this.currentRotation = this.camera.rotation; // keep alias in sync
         this.$rotationSlider.val(this.camera.rotation);
@@ -106,7 +98,6 @@ Object.assign(MobileSVGEditor.prototype, {
     // ── Animated Actions ─────────────────────────────────────
 
     animateZoom(targetZoom) {
-        if (this._isViewportLocked()) return;
         this._cameraTween.zoom = this.camera.zoom;
         gsap.to(this._cameraTween, {
             duration: 0.35,
@@ -120,7 +111,6 @@ Object.assign(MobileSVGEditor.prototype, {
     zoomOut() { this.animateZoom(Math.max(0.1, this.camera.zoom / 1.5)); },
 
     fitToView() {
-        if (this._isViewportLocked()) return;
         const container = this.$svgContainer[0];
         if (!container) return;
 
@@ -174,7 +164,6 @@ Object.assign(MobileSVGEditor.prototype, {
     },
 
     rotateView() {
-        if (this._isViewportLocked()) return;
         const target = (this.currentRotation + 90) % 360;
         this._cameraTween.rot = this.currentRotation;
         gsap.to(this._cameraTween, {
@@ -184,7 +173,6 @@ Object.assign(MobileSVGEditor.prototype, {
     },
 
     rotateViewLeft() {
-        if (this._isViewportLocked()) return;
         const target = (this.currentRotation - 90 + 360) % 360;
         this._cameraTween.rot = this.currentRotation;
         gsap.to(this._cameraTween, {
@@ -218,12 +206,16 @@ Object.assign(MobileSVGEditor.prototype, {
     },
 
     // ── Edit-mode check ─────────────────────────────────────
-    //   When objects are selected the viewport is locked so
-    //   drag / wheel / rotate act on the selection, not the
-    //   canvas.  Hold Space to temporarily unlock viewport.
+    //   Historically a selection locked the camera so drag/wheel/rotate acted on
+    //   the selection instead of the canvas.  That was never needed: pan already
+    //   requires Space or middle-mouse, and resize/rotate only start from a
+    //   handle hit-test — so nothing about zoom/fit/rotate could ever be
+    //   ambiguous.  All it did was make the view freeze whenever something was
+    //   selected.  Kept as a permanent `false` because external callers
+    //   (svgEditor's Hammer gestures) still probe it.
 
     _isViewportLocked() {
-        return this._selection?.length > 0 && !this._spaceHeld;
+        return false;
     },
 
     // ── Mouse Drag ───────────────────────────────────────────
@@ -233,7 +225,6 @@ Object.assign(MobileSVGEditor.prototype, {
         if (this._textEditActive) return;       // text input open — lock camera
 
         if (this.activeTool === 'select') {
-            if (this._isViewportLocked()) return;   // edit-mode: no viewport pan
             // Plain background drag now starts a marquee (canvasEngine); panning
             // requires Space held or middle mouse — Figma/Excalidraw convention.
             if (!this._spaceHeld && event.button !== 1) return;
@@ -282,7 +273,6 @@ Object.assign(MobileSVGEditor.prototype, {
 
     handleWheel(event) {
         if (this._textEditActive) return;       // text input open — lock camera
-        if (this._isViewportLocked()) return;   // edit-mode: no viewport zoom
         event.preventDefault();
         const e = event.originalEvent || event;
         const factor = e.deltaY > 0 ? 0.92 : 1.08;

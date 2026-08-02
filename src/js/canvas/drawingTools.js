@@ -10,6 +10,7 @@ Object.assign(MobileSVGEditor.prototype, {
     initDrawingTools() {
         this._drawState = null;   // active draw operation
         this._drawPreview = null;   // ghost/preview element
+        this._toolLock = false;   // Q toggles: keep the drawing tool active after a commit
 
         // Default style for new elements
         this._drawStyle = {
@@ -86,7 +87,27 @@ Object.assign(MobileSVGEditor.prototype, {
         document.body.appendChild(bar);
     },
 
-    setActiveTool(tool) {
+    // A tool is a one-shot action, not a mode: after it draws something it hands
+    // the canvas back to select so the next click manipulates what was just made.
+    // Q pins the tool for repeat drawing (Excalidraw's tool lock).
+    _DRAW_TOOLS: ['pen', 'line', 'rect', 'ellipse', 'polygon', 'text', 'wire'],
+
+    _revertToSelectTool() {
+        if (this._toolLock) return;
+        if (this.activeTool === 'select') return;
+        if (!this._DRAW_TOOLS.includes(this.activeTool)) return;
+        this.setActiveTool('select', { silent: true });
+    },
+
+    toggleToolLock() {
+        this._toolLock = !this._toolLock;
+        $('#toolLockBtn').toggleClass('active', this._toolLock);
+        this.showToast(this._toolLock
+            ? 'Tool lock ON — the active tool stays selected after each draw'
+            : 'Tool lock OFF — tools return to select after one draw', 'success');
+    },
+
+    setActiveTool(tool, { silent = false } = {}) {
         this.activeTool = tool;
 
         // Update toolbar active state
@@ -108,7 +129,7 @@ Object.assign(MobileSVGEditor.prototype, {
         this.$svgContainer.css('cursor', cursors[tool] || 'default');
 
         // If leaving draw mode, cancel any in-progress draw
-        if (!['pen', 'line', 'rect', 'ellipse', 'polygon', 'text', 'wire'].includes(tool)) {
+        if (!this._DRAW_TOOLS.includes(tool)) {
             this._cancelDraw();
         }
 
@@ -127,7 +148,11 @@ Object.assign(MobileSVGEditor.prototype, {
             text:    'Text — click to place, then type in the panel',
             wire:    'Wire — click waypoints, dbl-click/Enter commits, Esc cancels. Pick endpoint style below',
         };
-        this.showToast(hints[tool] || tool, 'success');
+        if (silent) return;
+        const suffix = (!this._toolLock && tool !== 'select' && tool !== 'hand')
+            ? '  ·  Q locks the tool for repeat draws'
+            : '';
+        this.showToast((hints[tool] || tool) + suffix, 'success');
     },
 
     // ── Main draw event binding ───────────────────────────────
@@ -185,7 +210,9 @@ Object.assign(MobileSVGEditor.prototype, {
             if (this.activeTool === 'wire')    this._wireCommit(e.clientX, e.clientY);
         });
 
-        // Escape cancels; Enter commits; Backspace retracts last waypoint
+        // Escape cancels; Enter commits; Backspace retracts last waypoint.
+        // (Escape also drops back to the select tool — owned by the global
+        // keydown handler in svgEditor.js, unconditionally, lock or no lock.)
         $(document).on('keydown.draw', (e) => {
             if (!this._drawState) return;
             if (e.key === 'Escape') { e.preventDefault(); this._cancelDraw(); }
@@ -246,6 +273,7 @@ Object.assign(MobileSVGEditor.prototype, {
         this._refreshPropertyPanel();
         if (typeof this.buildLayersTree === 'function') this.buildLayersTree();
         if (typeof this._scheduleGeoAnalysis === 'function') this._scheduleGeoAnalysis();
+        this._revertToSelectTool();
         return el;
     },
 
@@ -508,6 +536,7 @@ Object.assign(MobileSVGEditor.prototype, {
         this._refreshPropertyPanel();
         // Immediately open edit in property panel
         setTimeout(() => this._startInlineTextEdit(el), 50);
+        this._revertToSelectTool();
     },
 
     _startInlineTextEdit(textEl) {
@@ -765,22 +794,14 @@ Object.assign(MobileSVGEditor.prototype, {
                         wirePath.setAttribute('data-to-pin', entryPinId);
                     }
 
-                    // Split-insert: wire the exit pin to the second segment
-                    if (placed && seg2Ref && symPins.length >= 2) {
-                        const exitPin = symPins.find(p => p !== chosen) || symPins[symPins.length - 1];
-                        const exitCx = parseFloat(exitPin.getAttribute('cx') || 0);
-                        const exitCy = parseFloat(exitPin.getAttribute('cy') || 0);
-                        const exitPinId = exitPin.getAttribute('data-pin') ?? String(symPins.indexOf(exitPin));
-                        const exitWorldX = (svgPt.x - entryPinCx) + exitCx;
-                        const exitWorldY = (svgPt.y - entryPinCy) + exitCy;
-                        const seg2Coords = [...(seg2Ref.getAttribute('d') || '')
-                            .matchAll(/[ML]\s*([\d.eE+\-]+)[,\s]+([\d.eE+\-]+)/g)]
-                            .map(m => ({ x: parseFloat(m[1]), y: parseFloat(m[2]) }));
-                        const seg2End = seg2Coords[seg2Coords.length - 1] || { x: exitWorldX + 60, y: exitWorldY };
-                        seg2Ref.setAttribute('data-from-sym', placed.id);
-                        seg2Ref.setAttribute('data-from-pin', exitPinId);
-                        seg2Ref.setAttribute('d',
-                            `M ${exitWorldX} ${exitWorldY} L ${exitWorldX} ${seg2End.y} L ${seg2End.x} ${seg2End.y}`);
+                    // Split-insert: the far half of the cut is deliberately left
+                    // alone. Auto-wiring it to the exit pin meant rewriting its `d`,
+                    // which is how wires ended up drawn straight through the symbol
+                    // that had just been dropped on them. Its cut end is a connector;
+                    // the user drags it onto the exit pin when they want that link,
+                    // and the geometry they drew stays the geometry they drew.
+                    if (placed && seg2Ref) {
+                        this.showToast('Symbol inserted — drag the open connector onto its exit pin to finish the run', 'success');
                     }
                     this._closeSymbolPicker();
                 });

@@ -757,15 +757,53 @@ Object.assign(MobileSVGEditor.prototype, {
         } catch(_) { return null; }
     },
 
-    _applyResize(startTransforms, startBB, handle, dx, dy, lockAspect) {
+    // True when the selection must scale uniformly.
+    //
+    //   Symbols: a resistor squashed to 40% height is not a smaller resistor, it is
+    //   a wrong resistor. Their geometry, pin offsets and glyph proportions are the
+    //   notation, so they only ever scale uniformly.
+    //
+    //   Multi-select: a group resize applies the SAME sx/sy to every member about a
+    //   shared anchor. Non-uniform there deforms each individual member even when
+    //   the group's own bbox tracks the cursor correctly, which is exactly the
+    //   "multi-select resize deforms the content" failure. Uniform is the only
+    //   scale that leaves the members themselves undistorted.
+    _selectionRequiresUniformScale() {
+        if (!this._selection?.length) return false;
+        if (this._selection.length > 1) return true;
+        return this._selection.some(el =>
+            el.classList?.contains('domain-symbol') ||
+            el.querySelector?.('.domain-symbol, .pin-point'));
+    },
+
+    _applyResize(startTransforms, startBB, handle, dx, dy, shiftKey) {
+        const lockAspect = shiftKey || this._selectionRequiresUniformScale();
+
         const scaleX = handle.includes('e') ? (startBB.width + dx) / (startBB.width || 1)
             : handle.includes('w') ? (startBB.width - dx) / (startBB.width || 1)
                 : 1;
         const scaleY = handle.includes('s') ? (startBB.height + dy) / (startBB.height || 1)
             : handle.includes('n') ? (startBB.height - dy) / (startBB.height || 1)
                 : 1;
-        const sx = Math.max(0.01, lockAspect ? Math.min(scaleX, scaleY) : scaleX);
-        const sy = Math.max(0.01, lockAspect ? Math.min(scaleX, scaleY) : scaleY);
+
+        // Uniform factor. The old code used Math.min(scaleX, scaleY), which is wrong
+        // for edge handles: dragging 'e' outward gives scaleX=1.6, scaleY=1 (the
+        // untouched axis), and min() picks 1 — the shape refused to grow. Pick from
+        // the axes the handle actually drives, and on corners take whichever moved
+        // furthest from 1 so the shape follows the cursor.
+        let sx, sy;
+        if (lockAspect) {
+            const drivesX = /[ew]/.test(handle);
+            const drivesY = /[ns]/.test(handle);
+            let s;
+            if (drivesX && drivesY) s = Math.abs(scaleX - 1) >= Math.abs(scaleY - 1) ? scaleX : scaleY;
+            else if (drivesX) s = scaleX;
+            else s = scaleY;
+            sx = sy = Math.max(0.01, s);
+        } else {
+            sx = Math.max(0.01, scaleX);
+            sy = Math.max(0.01, scaleY);
+        }
         // Anchor: the bbox corner that stays fixed (opposite the dragged handle).
         const ax = handle.includes('w') ? startBB.x + startBB.width : startBB.x;
         const ay = handle.includes('n') ? startBB.y + startBB.height : startBB.y;
@@ -1179,83 +1217,176 @@ Object.assign(MobileSVGEditor.prototype, {
         junc.setAttribute('pointer-events', 'none');
         this._contentRoot.appendChild(junc);
 
-        // Switch to wire tool and start drawing from the branch point
-        this.setTool('wire');
+        // Switch to wire tool and start drawing from the branch point.
+        // (Was setTool() — a method that does not exist, so Alt+click threw.)
+        this.setActiveTool('wire');
         this._wireClick(branchPt);
     },
 
-    // ── Feature 1: Dblclick wire → split and insert component ──
+    // ── Wire cutting: geometry-preserving split + connector endpoints ──
+    //
+    //   A wire is one electrical run: connected pin → connected pin.  Cutting it
+    //   must therefore produce two complete runs, each terminating in a CONNECTOR
+    //   (a free endpoint that an unconnected symbol pin can later attach to).
+    //
+    //   What it must NOT do is re-route.  The old split fed both halves through
+    //   _smartRoute, which recomputed elbows from scratch and happily drove the
+    //   surviving half straight through the body of whatever symbol had just been
+    //   inserted.  Re-routing is also just wrong on its own terms: the user drew
+    //   those bends, and cutting a wire is not permission to redraw it.
+    //
+    //   So: keep every original vertex, insert the cut point, hand each half its
+    //   own connector node.  Adding a symbol is optional — the cut and its two
+    //   connectors exist whether or not anything gets placed there.
 
-    _splitWireAtClick(wirePath, clientX, clientY) {
-        // When the dblclick lands on the hitbox (pointer-events:stroke intercepts first),
-        // resolve to the visual sibling so stroke attrs are read from the real wire, not the
-        // 12-wide hitbox. Without this, stroke-width multiplies: 1→12→72→... on each split.
-        const wireContainer = wirePath.closest('.wire-group') || wirePath;
+    // Locate pt on a polyline. Returns the index of the segment
+    // coords[i] → coords[i+1] it projects onto, plus the projected point itself.
+    _locateOnPolyline(coords, pt) {
+        let best = { index: 0, point: coords[0], dist: Infinity };
+        for (let i = 0; i < coords.length - 1; i++) {
+            const a = coords[i], b = coords[i + 1];
+            const vx = b.x - a.x, vy = b.y - a.y;
+            const len2 = vx * vx + vy * vy;
+            let t = len2 ? ((pt.x - a.x) * vx + (pt.y - a.y) * vy) / len2 : 0;
+            t = Math.max(0, Math.min(1, t));
+            const p = { x: a.x + vx * t, y: a.y + vy * t };
+            const dist = Math.hypot(p.x - pt.x, p.y - pt.y);
+            if (dist < best.dist) best = { index: i, point: p, dist };
+        }
+        return best;
+    },
+
+    // Cut a vertex list at pt. Both halves keep every original vertex, so the
+    // drawn geometry survives the split byte-for-byte apart from the new terminus.
+    _splitPolylineAt(coords, pt) {
+        const loc = this._locateOnPolyline(coords, pt);
+        // Use the PROJECTED point, never the raw click. A click 3px off the wire
+        // would otherwise become a real vertex 3px off the wire, kinking both
+        // halves at the cut — the split has to land on the geometry it splits.
+        const p = { x: loc.point.x, y: loc.point.y };
+        const dedupe = arr => arr.filter((q, i) =>
+            i === 0 || Math.hypot(q.x - arr[i - 1].x, q.y - arr[i - 1].y) > 1e-6);
+        return {
+            left:  dedupe(coords.slice(0, loc.index + 1).concat([p])),
+            right: dedupe([p].concat(coords.slice(loc.index + 1))),
+            point: p,
+        };
+    },
+
+    // Literal M/L path through the given vertices — no elbow synthesis.
+    _polylinePath(pts) {
+        return pts.map((p, i) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' ');
+    },
+
+    // A connector = an open wire terminus. Unconnected symbol pins snap to these.
+    _makeWireConnector(pt, stroke) {
+        const c = document.createElementNS(this.SVG_NS, 'circle');
+        c.id = `conn_${Date.now()}_${Math.floor(Math.random() * 9999)}`;
+        c.setAttribute('cx', pt.x);
+        c.setAttribute('cy', pt.y);
+        c.setAttribute('r', '3.5');
+        c.setAttribute('class', 'wire-connector');
+        c.setAttribute('data-geo-class', 'connector');
+        c.setAttribute('fill', '#0f172a');
+        c.setAttribute('stroke', stroke || '#4facfe');
+        c.setAttribute('stroke-width', '1.5');
+        c.setAttribute('pointer-events', 'none');
+        return c;
+    },
+
+    // Read a wire's vertices + styling in one go. Resolves .wire-hitbox targets to
+    // their visual sibling: reading stroke-width off the 12-wide hitbox is what
+    // used to multiply stroke width 1→12→72 on successive splits.
+    _readWireForSplit(wirePath) {
+        const container = wirePath.closest('.wire-group') || wirePath;
         if (wirePath.classList.contains('wire-hitbox')) {
-            const visual = wireContainer.querySelector(':not(.wire-hitbox)');
+            const visual = container.querySelector(':not(.wire-hitbox)');
             if (visual) wirePath = visual;
         }
-
-        const svgPt = this.screenToSVG(clientX, clientY);
-
-        // Nearest point on the wire path
-        const len = wirePath.getTotalLength?.() || 0;
-        let splitPt = svgPt, bestDist = Infinity;
-        for (let i = 0; i <= 80; i++) {
-            const pt = wirePath.getPointAtLength(i / 80 * len);
-            const d = Math.hypot(pt.x - svgPt.x, pt.y - svgPt.y);
-            if (d < bestDist) { bestDist = d; splitPt = { x: pt.x, y: pt.y }; }
-        }
-
-        // Parse original wire endpoints and metadata
-        const d = wirePath.getAttribute('d') || '';
-        const coords = [...d.matchAll(/[ML]\s*([\d.eE+\-]+)[,\s]+([\d.eE+\-]+)/g)]
+        const coords = [...(wirePath.getAttribute('d') || '')
+            .matchAll(/[ML]\s*([\d.eE+\-]+)[,\s]+([\d.eE+\-]+)/g)]
             .map(m => ({ x: parseFloat(m[1]), y: parseFloat(m[2]) }));
-        if (coords.length < 2) return;
+        if (coords.length < 2) return null;
+        return {
+            wirePath, container, coords,
+            stroke:  wirePath.getAttribute('stroke') || '#4facfe',
+            sWidth:  wirePath.getAttribute('stroke-width') || '2',
+            fromSym: wirePath.getAttribute('data-from-sym'),
+            fromPin: wirePath.getAttribute('data-from-pin'),
+            toSym:   wirePath.getAttribute('data-to-sym'),
+            toPin:   wirePath.getAttribute('data-to-pin'),
+        };
+    },
 
-        const fromPt   = coords[0];
-        const toPt     = coords[coords.length - 1];
-        const stroke   = wirePath.getAttribute('stroke') || '#4facfe';
-        const sWidth   = wirePath.getAttribute('stroke-width') || '2';
-        const fromSym  = wirePath.getAttribute('data-from-sym');
-        const fromPin  = wirePath.getAttribute('data-from-pin');
-        const toSym    = wirePath.getAttribute('data-to-sym');
-        const toPin    = wirePath.getAttribute('data-to-pin');
+    // Core cut. Returns {seg1, seg2, connector, point} or null.
+    // seg1 keeps the original from-anchor, seg2 keeps the original to-anchor;
+    // the two new ends at the cut are both open connectors.
+    _cutWire(wirePath, pt) {
+        const info = this._readWireForSplit(wirePath);
+        if (!info) return null;
 
-        const before = this._captureFullState();
+        const { left, right, point } = this._splitPolylineAt(info.coords, pt);
+        if (left.length < 2 || right.length < 2) return null;
 
-        const fromPtWithDir = fromSym ? (this._resolveSymPinPos(fromSym, fromPin) || coords[0]) : coords[0];
-        const toPtWithDir   = toSym ? (this._resolveSymPinPos(toSym, toPin) || coords[coords.length - 1]) : coords[coords.length - 1];
-
-        const mkWire = (f, t) => {
+        const mkSeg = (pts) => {
             const p = document.createElementNS(this.SVG_NS, 'path');
             p.id = `el_${Date.now()}_${Math.floor(Math.random() * 9999)}`;
-            p.setAttribute('d', this._smartRoute(f, t));
+            p.setAttribute('d', this._polylinePath(pts));
             p.setAttribute('fill', 'none');
-            p.setAttribute('stroke', stroke);
-            p.setAttribute('stroke-width', sWidth);
+            p.setAttribute('stroke', info.stroke);
+            p.setAttribute('stroke-width', info.sWidth);
             p.setAttribute('data-geo-class', 'wire');
             return p;
         };
 
-        // Left segment: original-from → split point
-        const seg1 = mkWire(fromPtWithDir, splitPt);
-        if (fromSym) { seg1.setAttribute('data-from-sym', fromSym); seg1.setAttribute('data-from-pin', fromPin); }
+        const seg1 = mkSeg(left);
+        if (info.fromSym) {
+            seg1.setAttribute('data-from-sym', info.fromSym);
+            seg1.setAttribute('data-from-pin', info.fromPin || '0');
+        }
+        const seg2 = mkSeg(right);
+        if (info.toSym) {
+            seg2.setAttribute('data-to-sym', info.toSym);
+            seg2.setAttribute('data-to-pin', info.toPin || '0');
+        }
 
-        // Right segment: split point → original-to
-        const seg2 = mkWire(splitPt, toPtWithDir);
-        if (toSym)   { seg2.setAttribute('data-to-sym', toSym);     seg2.setAttribute('data-to-pin', toPin); }
+        const connector = this._makeWireConnector(point, info.stroke);
+        connector.setAttribute('data-wire-a', seg1.id);
+        connector.setAttribute('data-wire-b', seg2.id);
 
-        // Remove whole wire-group (visual + hitbox); falls back to the path itself for raw wires
-        wireContainer.remove();
-        this._contentRoot.appendChild(seg1);
-        this._contentRoot.appendChild(seg2);
+        const parent = info.container.parentNode;
+        if (!parent) return null;
+        parent.insertBefore(seg1, info.container);
+        parent.insertBefore(seg2, info.container);
+        parent.insertBefore(connector, info.container);
+        info.container.remove();
 
-        const after = this._captureFullState();
-        this.pushHistory('Split Wire', before, after);
+        return { seg1, seg2, connector, point };
+    },
 
-        // Open symbol picker — seg2Ref wires the exit pin automatically
-        this._showSymbolPicker(splitPt, seg1, clientX, clientY, seg2);
+    // ── Feature 1: Dblclick wire → cut, then optionally insert a symbol ──
+
+    _splitWireAtClick(wirePath, clientX, clientY) {
+        const info = this._readWireForSplit(wirePath);
+        if (!info) return;
+
+        const svgPt = this.screenToSVG(clientX, clientY);
+        const before = this._captureFullState();
+
+        const cut = this._cutWire(info.wirePath, svgPt);
+        if (!cut) {
+            // Cutting AT a terminus would leave a zero-length half — that is not a
+            // cut, it is the endpoint that is already there.
+            this.showToast('Cut point is on an endpoint — double-click along the wire body', 'error');
+            return;
+        }
+
+        this.pushHistory('Cut Wire', before, this._captureFullState());
+        this._scheduleGeoAnalysis?.();
+
+        // The picker is an offer, not a requirement — dismissing it leaves the two
+        // segments and their connector exactly as the cut made them.
+        this._showSymbolPicker(cut.point, cut.seg1, clientX, clientY, cut.seg2);
     },
 
     // ── Wire-body snap utilities ─────────────────────────────────────────
@@ -1405,52 +1536,24 @@ Object.assign(MobileSVGEditor.prototype, {
         return best;
     },
 
-    // Split wirePath at pt into two segments; insert a junction circle at the split point.
-    // Handles wire-group wrappers (created by the geometry pipeline).
+    // A T-junction is a cut whose meeting point is electrically shared rather than
+    // left open, so it reuses _cutWire and swaps the connector for a junction dot.
+    // Same rule applies: original vertices are preserved, nothing is re-routed.
     _splitWireAtPoint(wirePath, pt) {
-        const d = wirePath.getAttribute('d') || '';
-        const coords = [...d.matchAll(/[ML]\s*([\d.eE+\-]+)[,\s]+([\d.eE+\-]+)/g)]
-            .map(m => ({ x: parseFloat(m[1]), y: parseFloat(m[2]) }));
-        if (coords.length < 2) return null;
-
-        const fromPt = coords[0], toPt = coords[coords.length - 1];
-        const stroke = wirePath.getAttribute('stroke') || '#4facfe';
-        const sw     = wirePath.getAttribute('stroke-width') || '2';
-        const fromSym = wirePath.getAttribute('data-from-sym');
-        const fromPin = wirePath.getAttribute('data-from-pin');
-        const toSym   = wirePath.getAttribute('data-to-sym');
-        const toPin   = wirePath.getAttribute('data-to-pin');
-
-        const mkSeg = (f, t) => {
-            const p = document.createElementNS(this.SVG_NS, 'path');
-            p.id = `el_${Date.now()}_${Math.floor(Math.random() * 9999)}`;
-            p.setAttribute('d', `M ${f.x} ${f.y} L ${f.x} ${t.y} L ${t.x} ${t.y}`);
-            p.setAttribute('fill', 'none');
-            p.setAttribute('stroke', stroke);
-            p.setAttribute('stroke-width', sw);
-            p.setAttribute('data-geo-class', 'wire');
-            return p;
-        };
-
-        const seg1 = mkSeg(fromPt, pt);
-        if (fromSym) { seg1.setAttribute('data-from-sym', fromSym); seg1.setAttribute('data-from-pin', fromPin || '0'); }
-        const seg2 = mkSeg(pt, toPt);
-        if (toSym) { seg2.setAttribute('data-to-sym', toSym); seg2.setAttribute('data-to-pin', toPin || '0'); }
+        const cut = this._cutWire(wirePath, pt);
+        if (!cut) return null;
 
         const junc = document.createElementNS(this.SVG_NS, 'circle');
-        junc.setAttribute('cx', pt.x); junc.setAttribute('cy', pt.y); junc.setAttribute('r', '4');
-        junc.setAttribute('class', 'wire-junction'); junc.setAttribute('data-geo-class', 'junction');
+        junc.id = cut.connector.id;
+        junc.setAttribute('cx', cut.point.x);
+        junc.setAttribute('cy', cut.point.y);
+        junc.setAttribute('r', '4');
+        junc.setAttribute('class', 'wire-junction');
+        junc.setAttribute('data-geo-class', 'junction');
         junc.setAttribute('pointer-events', 'none');
+        cut.connector.replaceWith(junc);
 
-        const container = wirePath.closest('.wire-group') || wirePath;
-        const parent = container.parentNode;
-        if (!parent) return null;
-        parent.insertBefore(seg1, container);
-        parent.insertBefore(seg2, container);
-        parent.insertBefore(junc, container);
-        container.remove();
-
-        return { seg1, seg2, junc };
+        return { seg1: cut.seg1, seg2: cut.seg2, junc };
     },
 
     // Called after a new wire is committed: if the terminal point lands on another wire's
@@ -1562,20 +1665,69 @@ Object.assign(MobileSVGEditor.prototype, {
     _startMarquee(e) {
         const svgStart = this.screenToSVG(e.clientX, e.clientY);
         this._marqueeState = { startSVG: svgStart, currentSVG: { ...svgStart } };
+        this._marqueeCandidates = new Set();
 
         const onMove = (ev) => {
             this._marqueeState.currentSVG = this.screenToSVG(ev.clientX, ev.clientY);
+            // Recomputing the hit set every frame is the whole point: the user gets
+            // the same "is this in?" answer the wire-hover glow gives, before
+            // committing. Throttled to one pass per frame alongside the overlay.
+            if (!this._marqueeRafPending) {
+                this._marqueeRafPending = true;
+                requestAnimationFrame(() => {
+                    this._marqueeRafPending = false;
+                    if (this._marqueeState) this._updateMarqueeCandidates();
+                });
+            }
             this._scheduleOverlayRender();
         };
 
         const onUp = () => {
             $(document).off('mousemove.marquee mouseup.marquee');
+            this._clearMarqueeCandidates();
             this._commitMarquee();
             this._marqueeState = null;
             this._scheduleOverlayRender();
         };
 
         $(document).on('mousemove.marquee', onMove).on('mouseup.marquee', onUp);
+    },
+
+    // ── Marquee candidate preview ─────────────────────────────
+    //   Elements the current marquee WOULD capture get .se-marquee-candidate,
+    //   the same live-feedback idea as the net glow on wire hover.
+
+    _updateMarqueeCandidates() {
+        if (!this._marqueeState) return;
+        const box = this._marqueeBounds();
+        const next = new Set(box ? this._collectMarqueeHits(box) : []);
+        const prev = this._marqueeCandidates || new Set();
+
+        prev.forEach(el => { if (!next.has(el)) el.classList.remove('se-marquee-candidate'); });
+        next.forEach(el => { if (!prev.has(el)) el.classList.add('se-marquee-candidate'); });
+        this._marqueeCandidates = next;
+    },
+
+    _clearMarqueeCandidates() {
+        this._marqueeCandidates?.forEach(el => el.classList.remove('se-marquee-candidate'));
+        this._marqueeCandidates = null;
+        // Belt and braces: a candidate removed from the DOM mid-drag would keep the
+        // class if it ever came back through undo.
+        this._contentRoot?.querySelectorAll('.se-marquee-candidate')
+            .forEach(el => el.classList.remove('se-marquee-candidate'));
+    },
+
+    // World-space bounds of the in-flight marquee, or null when it is still a click.
+    _marqueeBounds() {
+        if (!this._marqueeState) return null;
+        const { startSVG, currentSVG } = this._marqueeState;
+        const b = {
+            x1: Math.min(startSVG.x, currentSVG.x),
+            y1: Math.min(startSVG.y, currentSVG.y),
+            x2: Math.max(startSVG.x, currentSVG.x),
+            y2: Math.max(startSVG.y, currentSVG.y),
+        };
+        return (b.x2 - b.x1 < 4 && b.y2 - b.y1 < 4) ? null : b;
     },
 
     _drawMarquee(ctx) {
@@ -1595,18 +1747,10 @@ Object.assign(MobileSVGEditor.prototype, {
         ctx.restore();
     },
 
-    _commitMarquee() {
-        if (!this._marqueeState) return;
-        const { startSVG, currentSVG } = this._marqueeState;
-
-        const mx1 = Math.min(startSVG.x, currentSVG.x);
-        const my1 = Math.min(startSVG.y, currentSVG.y);
-        const mx2 = Math.max(startSVG.x, currentSVG.x);
-        const my2 = Math.max(startSVG.y, currentSVG.y);
-
-        // Treat tiny drags as plain Ctrl+click (deselect all)
-        if (mx2 - mx1 < 4 && my2 - my1 < 4) { this.deselectAll(); return; }
-
+    // Every element the world-space box {x1,y1,x2,y2} would capture.
+    // Single source of truth for both the live preview and the commit, so what
+    // lights up during the drag is exactly what ends up selected.
+    _collectMarqueeHits({ x1, y1, x2, y2 }) {
         const svg = this.$svgDisplay[0];
         const seen = new Set();
         const hits = [];
@@ -1653,7 +1797,7 @@ Object.assign(MobileSVGEditor.prototype, {
             });
 
             // AABB overlap on both axes
-            if (elMaxX < mx1 || elMinX > mx2 || elMaxY < my1 || elMinY > my2) return;
+            if (elMaxX < x1 || elMinX > x2 || elMaxY < y1 || elMinY > y2) return;
 
             // Prefer the top-level domain-symbol or user group over inner shapes
             const target = el.closest('g[id^="group_"]') || el.closest('.domain-symbol') || el;
@@ -1663,6 +1807,16 @@ Object.assign(MobileSVGEditor.prototype, {
             }
         });
 
+        return hits;
+    },
+
+    _commitMarquee() {
+        const box = this._marqueeBounds();
+
+        // Treat tiny drags as plain click on empty canvas (deselect all)
+        if (!box) { this.deselectAll(); return; }
+
+        const hits = this._collectMarqueeHits(box);
         this.deselectAll();
         hits.forEach(el => this.selectEl(el, true));
         if (hits.length) this.showToast(`${hits.length} element${hits.length > 1 ? 's' : ''} selected`, 'success');

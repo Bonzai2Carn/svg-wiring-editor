@@ -150,6 +150,35 @@
 }
 
 /* ============================================================
+   Marquee candidate — elements the in-flight marquee would capture.
+   Deliberately the same cyan as the net-hover glow, and deliberately
+   NOT the #4facfe of a committed selection: during the drag it is a
+   prediction, and it should not look like a decision.
+   ============================================================ */
+.se-marquee-candidate,
+.se-marquee-candidate * {
+    stroke: #00f2fe !important;
+}
+
+.se-marquee-candidate {
+    filter: drop-shadow(0 0 3px rgba(0, 242, 254, 0.85)) !important;
+    opacity: 0.9;
+}
+
+/* ============================================================
+   Wire connector — an open wire terminus left by a cut.
+   Unconnected symbol pins attach here. Distinct from .wire-junction,
+   which marks a point that is already electrically shared.
+   ============================================================ */
+.wire-connector {
+    fill: #0f172a;
+    stroke: #4facfe;
+    stroke-width: 1.5px;
+    pointer-events: none;
+    filter: drop-shadow(0 0 3px rgba(79, 172, 254, 0.55));
+}
+
+/* ============================================================
    Wire Junction dot (Feature 3 — Alt+click branch point)
    ============================================================ */
 .wire-junction {
