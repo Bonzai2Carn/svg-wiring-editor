@@ -568,7 +568,10 @@ Object.assign(MobileSVGEditor.prototype, {
                             this._layerSelectedItems.set(item.el, $item);
                             $item.addClass('layer-selected');
                             this.selectEl?.(item.el);
-                            item.el.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+                            // scrollIntoView does nothing for an SVG node inside a
+                            // pan/zoom canvas — the page is not what needs to move.
+                            // Fly the camera instead.
+                            this.flyToElement?.(item.el);
                         }
                         $('.topo-item').removeClass('active');
                         $item.addClass('active');

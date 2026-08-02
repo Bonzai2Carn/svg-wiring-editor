@@ -279,6 +279,21 @@ Object.assign(MobileSVGEditor.prototype, {
                 return findings;
             },
         },
+        {
+            // Six rules above gate on data-symbol -> COMPONENT_SPECS, so an
+            // element the user reclassified as a component but which carries no
+            // symbol is skipped by every one of them WITHOUT SAYING SO. Silence
+            // reads as "checked and fine". This turns it into a finding.
+            id: 'classified-but-unnamed', severity: 'info',
+            check(ctx) {
+                return (ctx.unnamed || []).map(r => ({
+                    message: `"${r.refdes || r.id || 'element'}" is classified as ${r.cls} but has no symbol` +
+                             ` — BOM lists it as unknown and pin/polarity rules cannot run` +
+                             (r.corrected ? ' (class set by you)' : ''),
+                    elementIds: [r.id].filter(Boolean),
+                }));
+            },
+        },
     ],
 
     // ── Run + panel ───────────────────────────────────────────
@@ -292,6 +307,9 @@ Object.assign(MobileSVGEditor.prototype, {
             components: (this.components || []).filter(c => c.element?.isConnected),
             wires:      (this.wires || []).filter(w => w.element?.isConnected),
             specs:      window.COMPONENT_SPECS || {},
+            // Read through the shared analysis index so ERC and BOM see the
+            // classes the user set in Labels, not only what carries a symbol.
+            unnamed:    this.unnamedComponents?.() || [],
         };
         const findings = [];
         this._ERC_RULES.forEach(rule => {
@@ -382,12 +400,15 @@ Object.assign(MobileSVGEditor.prototype, {
             row.addEventListener('click', () => {
                 this.clearAllHighlights?.();
                 const f = findings[+row.dataset.idx];
-                f.elementIds.forEach(id => {
-                    const el = document.getElementById(id);
-                    if (!el) return;
+                const els = f.elementIds
+                    .map(id => document.getElementById(id))
+                    .filter(el => el && el.isConnected);
+                els.forEach(el => {
                     el.classList.add(el.getAttribute('data-geo-class') === 'wire' || el.tagName === 'path'
                         ? 'wire-trace' : 'component-highlight');
                 });
+                // A finding you cannot see is not actionable — go to it.
+                if (els[0]) this.flyToElement?.(els[0]);
             });
         });
     },
@@ -422,6 +443,9 @@ Object.assign(MobileSVGEditor.prototype, {
             components: (this.components || []).filter(c => c.element?.isConnected),
             wires:      (this.wires || []).filter(w => w.element?.isConnected),
             specs:      window.COMPONENT_SPECS || {},
+            // Read through the shared analysis index so ERC and BOM see the
+            // classes the user set in Labels, not only what carries a symbol.
+            unnamed:    this.unnamedComponents?.() || [],
         };
         const findings = [];
         this._ERC_RULES.forEach(rule => {

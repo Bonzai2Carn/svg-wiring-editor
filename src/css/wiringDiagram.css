@@ -10,7 +10,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    /* background-color: #fff; */
+    background-color: #fff;
     image-rendering: optimizeQuality;
     shape-rendering: geometricPrecision;
     text-rendering: geometricPrecision;
@@ -177,6 +177,9 @@ body.gx-dragging-pan * {
 .gx-label-chip {
     position: absolute;
     pointer-events: auto;
+    /* Text takes the provenance tint too, not just the border — at 9px a 1px
+       border alone is easy to miss, and who decided a class is the point. */
+    color: var(--src, #4facfe);
     display: inline-flex;
     align-items: center;
     gap: 3px;
@@ -186,7 +189,6 @@ body.gx-dragging-pan * {
     letter-spacing: 0.4px;
     white-space: nowrap;
     cursor: pointer;
-    color: #e8f4ff;
     background: rgba(15, 25, 45, 0.92);
     /* --src is the provenance tint: who decided this class */
     border: 1px solid var(--src, #4facfe);
@@ -220,7 +222,6 @@ body.gx-dragging-pan * {
 }
 
 body:not(.dark-mode) .gx-label-chip {
-    color: #0f172a;
     background: rgba(255, 255, 255, 0.95);
 }
 

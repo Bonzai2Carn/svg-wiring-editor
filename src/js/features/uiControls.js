@@ -178,6 +178,11 @@ ${svgData}
                 refdes:     label,
                 value:      label,
                 symbolType: el?.getAttribute?.('data-symbol') || comp.type || 'unknown',
+                // The class the analysis settled on, plus who settled it. A
+                // consumer downstream can now tell a recognized resistor from a
+                // shape a human asserted was a component.
+                geoClass:   el?.getAttribute?.('data-geo-class') || comp.type || null,
+                provenance: window.GxSchemaTags?.provenanceOf?.(el) || null,
                 domain:     el?.getAttribute?.('data-domain') || this.activeMode || '',
                 x, y,
                 ports: ports.map(p => ({ wireId: p.wireId || '', x: p.x || 0, y: p.y || 0 })),

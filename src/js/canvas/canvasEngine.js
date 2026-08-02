@@ -300,6 +300,56 @@ Object.assign(MobileSVGEditor.prototype, {
         this._drawOverlayRotHandle(ctx, tl, tr);
     },
 
+    // ── Coordinate spaces ─────────────────────────────────────
+    //
+    //   Three spaces are in play and mixing them is the single most common
+    //   defect in this file:
+    //
+    //     element-local  what a path's `d` and a circle's cx/cy are written in
+    //     document-local the space the camera works in; screenToSVG returns it
+    //     screen         pixels on the overlay canvas
+    //
+    //   `d` is element-local. _worldToOverlayScreen expects document-local. The
+    //   wire handles fed one straight into the other, so on any wire sitting
+    //   under a transformed ancestor (which is every imported drawing, since
+    //   editors wrap content in <g transform=...>) the handles rendered at the
+    //   untransformed coordinates. And because moving an element rewrites its
+    //   TRANSFORM and not its `d`, the handles then never moved at all.
+
+    /** element-local → document-local. */
+    _elToDoc(el) {
+        const svg = this.$svgDisplay?.[0];
+        let m = new DOMMatrix();
+        let node = el;
+        while (node && node !== svg && node.id !== '_cameraRotGroup') {
+            const tv = node.transform?.baseVal;
+            if (tv?.length) {
+                const lm = tv.consolidate()?.matrix;
+                if (lm) m = new DOMMatrix([lm.a, lm.b, lm.c, lm.d, lm.e, lm.f]).multiply(m);
+            }
+            node = node.parentElement;
+        }
+        return m;
+    },
+
+    /** document-local → element-local. Use before writing into `d`. */
+    _docToEl(el) {
+        try { return this._elToDoc(el).inverse(); }
+        catch (_) { return new DOMMatrix(); }
+    },
+
+    /** A wire's vertices in DOCUMENT-LOCAL space — the form handles and snapping want. */
+    _wirePointsDoc(el) {
+        const pts = this._parseWirePoints(el);
+        if (!pts) return null;
+        const m = this._elToDoc(el);
+        if (m.isIdentity) return pts;
+        return pts.map(p => {
+            const t = new DOMPoint(p.x, p.y).matrixTransform(m);
+            return { x: t.x, y: t.y };
+        });
+    },
+
     // ── Wire element detection ────────────────────────────────
     _isWireElement(el) {
         if (!el) return false;
@@ -321,8 +371,13 @@ Object.assign(MobileSVGEditor.prototype, {
             ];
         }
         const d = el.getAttribute('d') || '';
-        const pts = [...d.matchAll(/[ML]\s*([\d.eE+\-]+)[,\s]+([\d.eE+\-]+)/gi)]
-            .map(m => ({ x: parseFloat(m[1]), y: parseFloat(m[2]) }));
+        // Through the real parser: relative commands resolve against the running
+        // point, H/V/curves are understood, implicit repeats expand. The old
+        // inline regex read `l 40,0` as the absolute point (40,0).
+        const pts = window.GxPathGeo
+            ? window.GxPathGeo.vertices(d)
+            : [...d.matchAll(/[ML]\s*([\d.eE+\-]+)[,\s]+([\d.eE+\-]+)/g)]
+                .map(m => ({ x: parseFloat(m[1]), y: parseFloat(m[2]) }));
         return pts.length >= 2 ? pts : null;
     },
 
@@ -337,7 +392,8 @@ Object.assign(MobileSVGEditor.prototype, {
     // Endpoint handles (ep0, ep_last) at the termini — larger circles.
     // Breakpoint handles (bp_1, bp_2 …) at each intermediate bend — smaller.
     _drawWireEndpointHandles(ctx, el) {
-        const pts = this._parseWirePoints(el);
+        // Document-local, NOT the raw `d` values — see _elToDoc.
+        const pts = this._wirePointsDoc(el);
         if (!pts) return;
 
         // Project every wire point to screen space
@@ -382,6 +438,32 @@ Object.assign(MobileSVGEditor.prototype, {
         ctx.restore();
     },
 
+    // ── Tight bbox ────────────────────────────────────────────
+    //
+    //   getBBox() is the union of ALL of an element's geometry, including
+    //   subpaths that render nothing: a lone moveto, a zero-length segment, a
+    //   vertex an editor forgot to remove. One such orphan parked far from the
+    //   artwork stretches the box across the gap, and the selection handles and
+    //   the properties X/Y then render on that phantom corner instead of on the
+    //   shape. For a <path> we can do better by reading the data ourselves.
+    //
+    //   Returns a bbox in the element's OWN coordinate space, exactly like
+    //   getBBox(), so every existing transform-chain walk keeps working.
+    _tightBBox(el) {
+        if (!el || !el.getBBox) return null;
+        let raw = null;
+        try { raw = el.getBBox(); } catch (_) { return null; }
+        if (el.tagName?.toLowerCase() !== 'path' || !window.GxPathGeo) return raw;
+        const d = el.getAttribute('d');
+        if (!d) return raw;
+        const tight = window.GxPathGeo.bbox(d);
+        if (!tight) return raw;
+        // Never GROW the box: if our reading is larger, the element has
+        // geometry we did not model (markers, a filter) and getBBox knows more.
+        if (tight.width > raw.width + 0.5 || tight.height > raw.height + 0.5) return raw;
+        return tight;
+    },
+
     // ── Tight bbox corners projected directly to overlay screen space ──
     //   Replaces the old world-AABB→4-corner approach, which bloated the
     //   selection box for element-rotated shapes and camera-rotated views.
@@ -397,8 +479,7 @@ Object.assign(MobileSVGEditor.prototype, {
 
         const pts = [];
         this._selection.forEach(el => {
-            let bb;
-            try { bb = el.getBBox(); } catch (_) { return; }
+            const bb = this._tightBBox(el);
             if (!bb) return;
 
             // Walk element transform chain up to _cameraRotGroup (doc-local space)
@@ -500,8 +581,7 @@ Object.assign(MobileSVGEditor.prototype, {
         const svg = this.$svgDisplay[0];
 
         this._selection.forEach(el => {
-            let bb;
-            try { bb = el.getBBox(); } catch (_) { return; }
+            const bb = this._tightBBox(el);
             if (!bb) return;
 
             // Walk SVG transform chain from element up to _cameraRotGroup (exclusive).
@@ -679,8 +759,17 @@ Object.assign(MobileSVGEditor.prototype, {
 
     // ── Rewrite one specific point in a wire's geometry ──────
     // pointId: 'ep0' | 'ep_last' | 'bp_N' (N = 1-based index)
+    // x,y arrive in DOCUMENT-LOCAL space (screenToSVG), but `d` and the <line>
+    // attributes are element-local. Convert on the way in, or dragging a handle
+    // on a transformed wire writes the point to the wrong place.
     _moveWirePoint(el, pointId, x, y) {
         const tag = el.tagName?.toLowerCase();
+
+        const inv = this._docToEl(el);
+        if (!inv.isIdentity) {
+            const lp = new DOMPoint(x, y).matrixTransform(inv);
+            x = lp.x; y = lp.y;
+        }
 
         // <line> — first or last attribute pair
         if (tag === 'line') {
@@ -689,9 +778,17 @@ Object.assign(MobileSVGEditor.prototype, {
             return;
         }
 
-        // <path> — rewrite the N-th M/L coordinate in the d string
-        const d = el.getAttribute('d') || '';
-        const matches = [...d.matchAll(/([ML])\s*([\d.eE+\-]+)[,\s]+([\d.eE+\-]+)/gi)];
+        // <path> — rewrite the N-th vertex. Only safe on an absolute polyline:
+        // on a relative path this regex indexes offsets, not positions, and on a
+        // curve it would drop the curve. Normalize first so indices line up with
+        // the handles, which are drawn from the parsed vertex list.
+        let d = el.getAttribute('d') || '';
+        if (window.GxPathGeo && !/^[\sMLmlZz0-9.eE+,-]*$/.test(d)) return;
+        if (window.GxPathGeo && /[mlzZ]/.test(d)) {
+            d = window.GxPathGeo.toAbsolutePolyline(d);
+            el.setAttribute('d', d);
+        }
+        const matches = [...d.matchAll(/([ML])\s*([\d.eE+\-]+)[,\s]+([\d.eE+\-]+)/g)];
         if (matches.length < 2) return;
 
         let idx;
@@ -942,9 +1039,11 @@ Object.assign(MobileSVGEditor.prototype, {
                         : null;
 
                     // Parse original world-space points (snapshotted before bake)
-                    const pts = [...origDAttrs[i]
-                        .matchAll(/([ML])\s*([\d.eE+\-]+)[,\s]+([\d.eE+\-]+)/gi)]
-                        .map(m => ({ x: parseFloat(m[2]), y: parseFloat(m[3]) }));
+                    const pts = window.GxPathGeo
+                        ? window.GxPathGeo.vertices(origDAttrs[i])
+                        : [...origDAttrs[i]
+                            .matchAll(/([ML])\s*([\d.eE+\-]+)[,\s]+([\d.eE+\-]+)/g)]
+                            .map(m => ({ x: parseFloat(m[2]), y: parseFloat(m[3]) }));
                     if (pts.length < 2) return;
 
                     const translatedD = () => pts.map((p, k) =>
@@ -1048,14 +1147,22 @@ Object.assign(MobileSVGEditor.prototype, {
             // Both halves gone: the point it marked no longer exists.
             if (!a && !b) { node.remove(); return; }
 
-            // The cut point is A's LAST vertex, equivalently B's FIRST.
+            // The cut point is A's LAST vertex, equivalently B's FIRST. Read it
+            // in DOCUMENT space (the wire may be transformed) and then convert
+            // into the node's own parent space before writing cx/cy — the two
+            // elements need not share a parent.
             let pt = null;
-            if (a) { const p = this._parseWirePoints(a); if (p) pt = p[p.length - 1]; }
-            if (!pt && b) { const p = this._parseWirePoints(b); if (p) pt = p[0]; }
+            if (a) { const p = this._wirePointsDoc(a); if (p) pt = p[p.length - 1]; }
+            if (!pt && b) { const p = this._wirePointsDoc(b); if (p) pt = p[0]; }
             if (!pt) return;
 
-            node.setAttribute('cx', pt.x);
-            node.setAttribute('cy', pt.y);
+            const inv = this._docToEl(node);
+            const local = inv.isIdentity
+                ? pt
+                : new DOMPoint(pt.x, pt.y).matrixTransform(inv);
+
+            node.setAttribute('cx', local.x);
+            node.setAttribute('cy', local.y);
         });
     },
 
@@ -1253,9 +1360,11 @@ Object.assign(MobileSVGEditor.prototype, {
         const toSymId   = wirePath.getAttribute('data-to-sym');
 
         const d = wirePath.getAttribute('d') || '';
-        let pts = [...d.matchAll(/[ML]\s*([\d.eE+\-]+)[,\s]+([\d.eE+\-]+)/g)]
-            .map(m => ({ x: parseFloat(m[1]), y: parseFloat(m[2]) }));
-        if (pts.length < 2) return;
+        // Re-anchoring rewrites `d` as a polyline, so it must not run on a path
+        // whose shape a polyline cannot express.
+        if (window.GxPathGeo && !window.GxPathGeo.isPolylineSafe(d)) return;
+        let pts = this._parseWirePoints(wirePath);
+        if (!pts || pts.length < 2) return;
 
         const fromPt = fromSymId
             ? this._resolveSymPinPos(fromSymId, wirePath.getAttribute('data-from-pin') || '0')
@@ -1381,10 +1490,19 @@ Object.assign(MobileSVGEditor.prototype, {
             const visual = container.querySelector(':not(.wire-hitbox)');
             if (visual) wirePath = visual;
         }
-        const coords = [...(wirePath.getAttribute('d') || '')
-            .matchAll(/[ML]\s*([\d.eE+\-]+)[,\s]+([\d.eE+\-]+)/g)]
-            .map(m => ({ x: parseFloat(m[1]), y: parseFloat(m[2]) }));
+        const d = wirePath.getAttribute('d') || '';
+        const coords = window.GxPathGeo
+            ? window.GxPathGeo.vertices(d)
+            : [...d.matchAll(/[ML]\s*([\d.eE+\-]+)[,\s]+([\d.eE+\-]+)/g)]
+                .map(m => ({ x: parseFloat(m[1]), y: parseFloat(m[2]) }));
         if (coords.length < 2) return null;
+        // Cutting rewrites `d` as an M/L polyline. On a path with curves or
+        // several subpaths that is not a cut, it is a redraw — refuse rather
+        // than silently flatten an imported drawing.
+        if (window.GxPathGeo && !window.GxPathGeo.isPolylineSafe(d)) {
+            this.showToast('This path has curves or multiple subpaths — cut only supports polylines', 'error');
+            return null;
+        }
         return {
             wirePath, container, coords,
             stroke:  wirePath.getAttribute('stroke') || '#4facfe',
@@ -1470,13 +1588,19 @@ Object.assign(MobileSVGEditor.prototype, {
     // ── Wire-body snap utilities ─────────────────────────────────────────
 
     // 80-step sample of a path; returns {x,y,t,dist} closest to pt.
+    // pt is DOCUMENT-local; getPointAtLength returns ELEMENT-local. Project each
+    // sample before comparing, and return the result in document space so the
+    // caller can use it directly against pins and other wires.
     _closestPointOnPath(wirePath, pt) {
         const len = wirePath.getTotalLength?.() || 0;
         if (!len) return null;
+        const m = this._elToDoc(wirePath);
+        const ident = m.isIdentity;
         let bx = pt.x, by = pt.y, bd = Infinity, bt = 0;
         for (let i = 0; i <= 80; i++) {
             const t = i / 80;
-            const p = wirePath.getPointAtLength(t * len);
+            let p = wirePath.getPointAtLength(t * len);
+            if (!ident) p = new DOMPoint(p.x, p.y).matrixTransform(m);
             const d = Math.hypot(p.x - pt.x, p.y - pt.y);
             if (d < bd) { bd = d; bx = p.x; by = p.y; bt = t; }
         }
@@ -1487,10 +1611,9 @@ Object.assign(MobileSVGEditor.prototype, {
     _closestWireBodySnap(wirePath, pt, endpointEPS = 6) {
         const snap = this._closestPointOnPath(wirePath, pt);
         if (!snap) return null;
-        const coords = [...(wirePath.getAttribute('d') || '')
-            .matchAll(/[ML]\s*([\d.eE+\-]+)[,\s]+([\d.eE+\-]+)/g)]
-            .map(m => ({ x: parseFloat(m[1]), y: parseFloat(m[2]) }));
-        if (coords.length < 2) return null;
+        // Document space, to match the snap point returned above.
+        const coords = this._wirePointsDoc(wirePath);
+        if (!coords || coords.length < 2) return null;
         const s = coords[0], e = coords[coords.length - 1];
         if (Math.hypot(snap.x - s.x, snap.y - s.y) < endpointEPS) return null;
         if (Math.hypot(snap.x - e.x, snap.y - e.y) < endpointEPS) return null;
@@ -1514,10 +1637,11 @@ Object.assign(MobileSVGEditor.prototype, {
         let best = null, bestDist = threshold;
         this._contentRoot?.querySelectorAll('path[data-geo-class="wire"]').forEach(wire => {
             if (excludeIds.has(wire.id)) return;
-            const coords = [...(wire.getAttribute('d') || '')
-                .matchAll(/[ML]\s*([\d.eE+\-]+)[,\s]+([\d.eE+\-]+)/g)]
-                .map(m => ({ x: parseFloat(m[1]), y: parseFloat(m[2]) }));
-            if (coords.length < 2) return;
+            // Document space: pin positions come from _pinWorldPos, which is
+            // document space, so comparing raw `d` values would be comparing
+            // two different coordinate systems.
+            const coords = this._wirePointsDoc(wire);
+            if (!coords || coords.length < 2) return;
             if (!wire.getAttribute('data-from-sym')) {
                 const dist = Math.hypot(coords[0].x - pt.x, coords[0].y - pt.y);
                 if (dist < bestDist) { bestDist = dist; best = { wire, pt: coords[0], which: 'from', dist }; }
@@ -1654,11 +1778,11 @@ Object.assign(MobileSVGEditor.prototype, {
         this._clearNetHighlight();
         if (!wirePath) return;
 
+        // Document space, so two wires under different transformed ancestors
+        // still register as touching when they visually touch.
         const endpointsOf = (w) => {
-            const pts = [...(w.getAttribute('d') || '')
-                .matchAll(/[ML]\s*([\d.eE+\-]+)[,\s]+([\d.eE+\-]+)/g)]
-                .map(m => ({ x: parseFloat(m[1]), y: parseFloat(m[2]) }));
-            return pts.length ? [pts[0], pts[pts.length - 1]] : [];
+            const pts = this._wirePointsDoc(w);
+            return pts && pts.length ? [pts[0], pts[pts.length - 1]] : [];
         };
 
         // BFS: find all wires connected by endpoint proximity
@@ -1695,10 +1819,9 @@ Object.assign(MobileSVGEditor.prototype, {
 
     // Returns the net-label text attached to a wire endpoint, or null.
     _getNetLabelForWire(wirePath) {
-        const pts = [...(wirePath.getAttribute('d') || '')
-            .matchAll(/[ML]\s*([\d.eE+\-]+)[,\s]+([\d.eE+\-]+)/g)]
-            .map(m => ({ x: parseFloat(m[1]), y: parseFloat(m[2]) }));
-        if (!pts.length) return null;
+        // Document space — compared below against _pinWorldPos.
+        const pts = this._wirePointsDoc(wirePath);
+        if (!pts || !pts.length) return null;
         const start = pts[0], end = pts[pts.length - 1];
         const EPS = 12;
         let found = null;
@@ -1728,10 +1851,8 @@ Object.assign(MobileSVGEditor.prototype, {
 
         const before = this._captureFullState();
         wires.forEach(w => {
-            const pts = [...(w.getAttribute('d') || '')
-                .matchAll(/[ML]\s*([\d.eE+\-]+)[,\s]+([\d.eE+\-]+)/g)]
-                .map(m => ({ x: parseFloat(m[1]), y: parseFloat(m[2]) }));
-            if (pts.length < 2) return;
+            const pts = this._parseWirePoints(w);
+            if (!pts || pts.length < 2) return;
             const f = pts[0], t = pts[pts.length - 1];
             w.setAttribute('d', `M ${f.x} ${f.y} L ${f.x} ${t.y} L ${t.x} ${t.y}`);
         });
@@ -1852,8 +1973,7 @@ Object.assign(MobileSVGEditor.prototype, {
             // never the wrapper group (it has no id and confuses group-move logic).
             if (el.classList.contains('wire-group') || el.classList.contains('component-group')) return;
 
-            let bb;
-            try { bb = el.getBBox(); } catch (_) { return; }
+            const bb = this._tightBBox(el);
             if (!bb || (bb.width === 0 && bb.height === 0)) return;
 
             // Walk transform chain from element up to _cameraRotGroup (doc-local boundary)

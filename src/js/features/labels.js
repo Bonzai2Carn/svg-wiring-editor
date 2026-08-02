@@ -174,6 +174,65 @@ Object.assign(MobileSVGEditor.prototype, {
         return out;
     },
 
+    /**
+     * THE shared analysis index. One list, read by the Labels chips, ERC, the
+     * netlist/BOM payload, the highlight tools and the Artifacts panel.
+     *
+     *   Before this existed, the ecosystem had two sources of truth and each
+     *   consumer picked one. `data-geo-class` says what KIND of thing an element
+     *   is and drives the geometry pipeline; `data-symbol` says what it
+     *   SPECIFICALLY is and drives COMPONENT_SPECS. Reclassifying wrote the
+     *   first and not the second, so Layers and Inspect followed the edit while
+     *   ERC's pin rules skipped the element, BOM listed it as "unknown", and the
+     *   Artifacts panel (which queried `[data-symbol]` alone) could not see it.
+     *
+     * Each row: { el, id, cls, symbol, inferred, source, score, corrected }
+     *   cls    — the class in force, after any user correction
+     *   symbol — the semantic label, or null. `cls` without `symbol` is the
+     *            actionable gap: we know it is a component, not which one.
+     */
+    analysisIndex() {
+        return this._analyzedElements().map(({ el, cls, inferred }) => {
+            const prov = this._tags?.provenanceOf?.(el) || null;
+            return {
+                el,
+                id: el.id || null,
+                cls: prov?.cls || cls,
+                symbol: el.getAttribute?.('data-symbol') || null,
+                refdes: el.getAttribute?.('data-refdes') ||
+                        el.querySelector?.('text.sym-value')?.textContent?.trim() || null,
+                inferred,
+                source: prov?.source || 'internal-draw',
+                score: prov?.score != null ? prov.score : 1.0,
+                corrected: !!prov?.corrected,
+            };
+        });
+    },
+
+    // Elements the analysis calls a component/module but cannot name. These are
+    // the ones BOM lists as "unknown" and every spec-driven ERC rule skips.
+    unnamedComponents() {
+        return this.analysisIndex().filter(r =>
+            (r.cls === 'component' || r.cls === 'module') && !r.symbol);
+    },
+
+    // Anything downstream of the analysis has to be told when the analysis
+    // changed, or it keeps showing a result computed against the old classes.
+    _invalidateAnalysisConsumers() {
+        // ERC findings are computed on demand; if the panel is open it is now
+        // showing conclusions about classes that no longer exist.
+        if ($('#ercPanel').hasClass('open') && typeof this.runErc === 'function') {
+            this.runErc();
+        }
+        // The Artifacts panel enumerates artifacts from the DOM (root-injected).
+        window.GxArtifactsPanel?.refresh?.();
+        // Live highlight overlays are keyed on the old component/wire sets.
+        if (typeof this.clearAllHighlights === 'function' && this._highlightActive) {
+            this.clearAllHighlights();
+        }
+        if (typeof this.buildLayersTree === 'function') this.buildLayersTree();
+    },
+
     // ── Screen-space chip layer ───────────────────────────────
 
     _labelLayer() {
@@ -300,12 +359,25 @@ Object.assign(MobileSVGEditor.prototype, {
         el.classList.toggle('gx-label-peek', !!on);
     },
 
+    // Is the element inside the visible viewport right now?
+    _isElementOnScreen(el) {
+        try {
+            const r = el.getBoundingClientRect();
+            const c = this.$svgContainer[0].getBoundingClientRect();
+            return r.right > c.left && r.left < c.right &&
+                   r.bottom > c.top && r.top < c.bottom;
+        } catch (_) { return true; }   // unknown: do not yank the camera
+    },
+
     _focusLabelTarget(el) {
         if (!el?.isConnected) return;
         this._peekLabelTarget(el, false);
         // Real selection, not just a glow: handles appear, the property panel
-        // fills in, and the element is ready to act on.
+        // fills in, and the element is ready to act on. Only fly if it is
+        // actually off-screen — a chip you just clicked is usually right there,
+        // and moving the camera under the pointer would be disorienting.
         this.selectEl(el);
+        if (!this._isElementOnScreen?.(el)) this.flyToElement?.(el);
         el.classList.add('gx-label-flash');
         setTimeout(() => el.classList?.remove('gx-label-flash'), 700);
     },
@@ -423,7 +495,7 @@ Object.assign(MobileSVGEditor.prototype, {
         this.pushHistory('Reclassify', before, this._captureFullState());
 
         this._renderLabels();
-        if (typeof this.buildLayersTree === 'function') this.buildLayersTree();
+        this._invalidateAnalysisConsumers();
         this.showToast(prev && prev !== cls
             ? `Reclassified: ${prev} → ${cls}`
             : `Classified as ${cls}`, 'success');

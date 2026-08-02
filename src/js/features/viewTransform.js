@@ -208,6 +208,99 @@ Object.assign(MobileSVGEditor.prototype, {
         $('#traceWireBtn').removeClass('active');
     },
 
+    // ── Fly to an element ─────────────────────────────────────
+    //
+    //   A finding, a layer row or an artifact chip that selects something
+    //   off-screen has told you a fact you cannot act on. Selecting should
+    //   always end with the thing visible.
+    //
+    //   Reads the TIGHT bbox, so a path carrying a stray far-off vertex flies
+    //   to the ink rather than to the middle of the gap between ink and orphan.
+    flyToElement(el, opts) {
+        const o = opts || {};
+        if (!el || !el.isConnected) return;
+        const svg = this.$svgDisplay?.[0];
+        const container = this.$svgContainer?.[0];
+        if (!svg || !container) return;
+
+        const bb = this._tightBBox ? this._tightBBox(el) : (() => {
+            try { return el.getBBox(); } catch (_) { return null; }
+        })();
+        if (!bb) return;
+
+        // element-local → document-local (the space the camera works in)
+        let m = new DOMMatrix();
+        let node = el;
+        while (node && node !== svg && node.id !== '_cameraRotGroup') {
+            const tv = node.transform?.baseVal;
+            if (tv?.length) {
+                const lm = tv.consolidate()?.matrix;
+                if (lm) m = new DOMMatrix([lm.a, lm.b, lm.c, lm.d, lm.e, lm.f]).multiply(m);
+            }
+            node = node.parentElement;
+        }
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        [[bb.x, bb.y], [bb.x + bb.width, bb.y],
+         [bb.x, bb.y + bb.height], [bb.x + bb.width, bb.y + bb.height]].forEach(([px, py]) => {
+            const tp = new DOMPoint(px, py).matrixTransform(m);
+            minX = Math.min(minX, tp.x); minY = Math.min(minY, tp.y);
+            maxX = Math.max(maxX, tp.x); maxY = Math.max(maxY, tp.y);
+        });
+        if (!isFinite(minX)) return;
+
+        const cW = container.clientWidth || 1;
+        const cH = container.clientHeight || 1;
+        const w = Math.max(maxX - minX, 1);
+        const h = Math.max(maxY - minY, 1);
+
+        // Zoom so the element fills a comfortable fraction of the viewport, but
+        // never zoom PAST the current level for something already large: flying
+        // to a big module should not shove you into its interior.
+        const fit = Math.min(cW / w, cH / h) * (o.fill || 0.35);
+        const targetZoom = Math.max(0.1, Math.min(o.maxZoom || 4, fit));
+
+        const cx = (minX + maxX) / 2;
+        const cy = (minY + maxY) / 2;
+        const targetTx = cW / 2 - cx * targetZoom;
+        const targetTy = cH / 2 - cy * targetZoom;
+
+        if (typeof gsap === 'undefined') {
+            this.camera.setPan(targetTx, targetTy);
+            this.setZoom(targetZoom);
+            this.updateTransform();
+            return;
+        }
+
+        gsap.killTweensOf(this._cameraTween);
+        this._cameraTween.zoom = this.camera.zoom;
+        this._cameraTween.tx = this.camera.tx;
+        this._cameraTween.ty = this.camera.ty;
+        gsap.to(this._cameraTween, {
+            duration: o.duration != null ? o.duration : 0.45,
+            ease: 'power2.inOut',
+            zoom: targetZoom, tx: targetTx, ty: targetTy,
+            onUpdate: () => {
+                this.camera.setPan(this._cameraTween.tx, this._cameraTween.ty);
+                this.setZoom(this._cameraTween.zoom);
+            },
+            onComplete: () => {
+                this.camera.setPan(targetTx, targetTy);
+                this.updateTransform();
+                this.updateSliders?.();
+            },
+        });
+    },
+
+    // Select an element AND make sure you can see it. The pairing every
+    // list-row click wants.
+    revealElement(el, opts) {
+        if (!el?.isConnected) return;
+        this.selectEl?.(el);
+        this.flyToElement(el, opts);
+        el.classList?.add('gx-label-flash');
+        setTimeout(() => el.classList?.remove('gx-label-flash'), 700);
+    },
+
     // ── Edit-mode check ─────────────────────────────────────
     //   Historically a selection locked the camera so drag/wheel/rotate acted on
     //   the selection instead of the canvas.  That was never needed: pan already
