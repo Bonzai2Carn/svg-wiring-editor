@@ -160,6 +160,214 @@ body.gx-dragging-pan * {
 }
 
 /* ============================================================
+   Analysis label chips.
+   Screen-space, not SVG: a label that scales with the canvas is
+   unreadable at both ends of the zoom range. The layer ignores
+   pointer events so it never steals a canvas drag; only the chips
+   themselves are clickable.
+   ============================================================ */
+.gx-label-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+    z-index: 40;
+}
+
+.gx-label-chip {
+    position: absolute;
+    pointer-events: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 0 4px 0 3px;
+    border-radius: 8px;
+    font: 600 9px/1.5 Inter, system-ui, sans-serif;
+    letter-spacing: 0.4px;
+    white-space: nowrap;
+    cursor: pointer;
+    color: #e8f4ff;
+    background: rgba(15, 25, 45, 0.92);
+    /* --src is the provenance tint: who decided this class */
+    border: 1px solid var(--src, #4facfe);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+    transition: transform 0.1s ease, background 0.1s ease;
+}
+
+.gx-label-chip:hover {
+    transform: scale(1.06);
+    background: rgba(25, 40, 65, 0.98);
+}
+
+/* --chip is the class colour, matching the Layers > Analysis buckets */
+.gx-label-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--chip, #94a3b8);
+    flex: none;
+}
+
+.gx-label-mark {
+    font-size: 9px;
+    color: var(--src, #4facfe);
+    font-weight: 700;
+}
+
+/* An inferred class is a guess. Dashed border marks the ones worth confirming. */
+.gx-label-chip[data-source="pdf-extract"] {
+    border-style: dashed;
+}
+
+body:not(.dark-mode) .gx-label-chip {
+    color: #0f172a;
+    background: rgba(255, 255, 255, 0.95);
+}
+
+/* Provenance legend: how much of this drawing the machine decided */
+.gx-label-legend {
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 10px;
+    border-radius: 8px;
+    font: 500 10px/1.6 Inter, system-ui, sans-serif;
+    color: #dfe6ee;
+    background: rgba(15, 25, 45, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    max-width: 92%;
+    overflow-x: auto;
+    white-space: nowrap;
+}
+
+.gx-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.gx-legend-item i {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.gx-legend-export {
+    border: 1px solid rgba(52, 211, 153, 0.5);
+    background: rgba(52, 211, 153, 0.12);
+    color: #34d399;
+    border-radius: 6px;
+    padding: 1px 7px;
+    font: 600 10px/1.6 Inter, system-ui, sans-serif;
+    cursor: pointer;
+}
+
+.gx-legend-export:hover {
+    background: rgba(52, 211, 153, 0.22);
+}
+
+body:not(.dark-mode) .gx-label-legend {
+    color: #1e293b;
+    background: rgba(255, 255, 255, 0.95);
+    border-color: rgba(0, 0, 0, 0.12);
+}
+
+
+/* Menu rows carry the shortcode AND the word, so the chips stay legible */
+.gx-menu-code {
+    display: inline-block;
+    min-width: 26px;
+    font: 700 9px/1.4 Inter, system-ui, sans-serif;
+    letter-spacing: 0.4px;
+    color: #4facfe;
+}
+
+/* ============================================================
+   Telling you WHICH element a chip is talking about.
+   peek  = transient, while the pointer is on the chip
+   flash = a short confirmation after clicking it
+   Both target descendants too, since a symbol is a <g>.
+   ============================================================ */
+.gx-label-peek,
+.gx-label-peek * {
+    stroke: #00f2fe !important;
+}
+
+.gx-label-peek {
+    filter: drop-shadow(0 0 4px rgba(0, 242, 254, 0.9)) !important;
+}
+
+.gx-label-flash,
+.gx-label-flash * {
+    stroke: #34d399 !important;
+}
+
+.gx-label-flash {
+    animation: gx-label-flash 0.7s ease-out;
+}
+
+@keyframes gx-label-flash {
+    0%, 40% {
+        filter: drop-shadow(0 0 7px rgba(52, 211, 153, 1));
+    }
+    100% {
+        filter: drop-shadow(0 0 0 rgba(52, 211, 153, 0));
+    }
+}
+
+/* ── Reclassify dropdown ───────────────────────────────────── */
+.gx-label-menu {
+    position: fixed;
+    z-index: 9999;
+    min-width: 130px;
+    padding: 4px;
+    border-radius: 8px;
+    background: rgba(15, 25, 45, 0.98);
+    border: 1px solid rgba(79, 172, 254, 0.35);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+}
+
+.gx-label-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    width: 100%;
+    padding: 5px 8px;
+    border: none;
+    border-radius: 5px;
+    background: none;
+    color: #dfe6ee;
+    font: 400 11px/1.4 Inter, system-ui, sans-serif;
+    text-align: left;
+    cursor: pointer;
+}
+
+.gx-label-menu-item:hover {
+    background: rgba(79, 172, 254, 0.16);
+}
+
+.gx-label-menu-item.is-current {
+    color: #4facfe;
+    font-weight: 600;
+}
+
+body:not(.dark-mode) .gx-label-menu {
+    background: #fff;
+    border-color: rgba(0, 0, 0, 0.15);
+}
+
+body:not(.dark-mode) .gx-label-menu-item {
+    color: #1e293b;
+}
+
+/* ============================================================
    Net Highlight (Feature 5 — click wire to glow entire net)
    ============================================================ */
 .wire-net-highlight {

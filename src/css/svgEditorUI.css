@@ -290,12 +290,11 @@ body {
     position: relative;
     overflow: hidden;
     /* Fix #2: clips content that moves outside bounds */
-    cursor: grab;
     touch-action: none;
-}
-
-.svg-container:active {
-    cursor: grabbing;
+    /* NO cursor here. The container's cursor is set from JS (tool + hover +
+       handle hit-test) and a CSS baseline fought it: clearing the inline style
+       over empty canvas fell back to `grab`, so the select tool looked like the
+       hand tool, and :active made every click read as `grabbing`. */
 }
 
 /* #svgWrapper receives CSS transforms only for 3D effects

@@ -222,6 +222,11 @@ Object.assign(MobileSVGEditor.prototype, {
     _renderHandles() {
         this._removeHandles();
         this._scheduleOverlayRender();
+        // Handles re-render after every move/resize/rotate/nudge, which makes
+        // this the one hook that catches ELEMENT motion. updateTransform only
+        // catches CAMERA motion, so without this the chips stayed behind
+        // whenever something was dragged.
+        this._schedulePositionLabels?.();
     },
 
     _removeHandles() {
@@ -634,6 +639,7 @@ Object.assign(MobileSVGEditor.prototype, {
                 if (this._lastSnappedPin) this._lastSnappedPin.classList.add('pin-snap');
             }
             this._moveWirePoint(el, pointId, snapped.x, snapped.y);
+            this._syncWireNodes();
             this._renderHandles();
         };
 
@@ -1023,6 +1029,36 @@ Object.assign(MobileSVGEditor.prototype, {
         $(document).on('mousemove.move', onMove).on('mouseup.move', onUp);
     },
 
+    // A connector/junction dot marks a point ON a wire, but it is a separate
+    // circle with its own cx/cy — so when the wire moved, the dot stayed put and
+    // was left floating in empty canvas. Each node records the wires it joins
+    // (data-wire-a = the segment ending here, data-wire-b = the one starting
+    // here), so its position is derivable rather than remembered.
+    _syncWireNodes() {
+        const root = this._contentRoot;
+        if (!root) return;
+        root.querySelectorAll('.wire-connector, .wire-junction').forEach(node => {
+            const aId = node.getAttribute('data-wire-a');
+            const bId = node.getAttribute('data-wire-b');
+            if (!aId && !bId) return;                 // standalone dot, not ours to move
+
+            const a = aId ? root.querySelector(`#${CSS.escape(aId)}`) : null;
+            const b = bId ? root.querySelector(`#${CSS.escape(bId)}`) : null;
+
+            // Both halves gone: the point it marked no longer exists.
+            if (!a && !b) { node.remove(); return; }
+
+            // The cut point is A's LAST vertex, equivalently B's FIRST.
+            let pt = null;
+            if (a) { const p = this._parseWirePoints(a); if (p) pt = p[p.length - 1]; }
+            if (!pt && b) { const p = this._parseWirePoints(b); if (p) pt = p[0]; }
+            if (!pt) return;
+
+            node.setAttribute('cx', pt.x);
+            node.setAttribute('cy', pt.y);
+        });
+    },
+
     // Re-route all wires whose endpoints are pinned to any currently selected symbol.
     // Called after every move, rotate, and resize frame.
     _updateWiresForSelection() {
@@ -1033,6 +1069,8 @@ Object.assign(MobileSVGEditor.prototype, {
                 `[data-from-sym="${id}"], [data-to-sym="${id}"]`
             ).forEach(wire => this._updateAttachedWire(wire, id));
         });
+        // Wires just moved, so the dots that sit on them have to follow.
+        this._syncWireNodes();
     },
 
     _pinWorldPos(pinEl) {
@@ -1591,6 +1629,9 @@ Object.assign(MobileSVGEditor.prototype, {
         junc.setAttribute('class', 'wire-junction');
         junc.setAttribute('data-geo-class', 'junction');
         junc.setAttribute('pointer-events', 'none');
+        // Carry the wire refs across or the junction cannot re-seat itself later.
+        junc.setAttribute('data-wire-a', cut.seg1.id);
+        junc.setAttribute('data-wire-b', cut.seg2.id);
         cut.connector.replaceWith(junc);
 
         return { seg1: cut.seg1, seg2: cut.seg2, junc };
@@ -2276,5 +2317,9 @@ Object.assign(MobileSVGEditor.prototype, {
 
         // Force rebuild of graph and recreate fresh hitboxes based on the restored geometry
         if (typeof this._runGeometryPipeline === 'function') this._runGeometryPipeline();
+        this._syncWireNodes?.();
+        // Undo can add or remove elements, so chips need a full rebuild here,
+        // not just a re-projection.
+        if (this._labelsOn) this._renderLabels?.();
     },
 });

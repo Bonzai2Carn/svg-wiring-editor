@@ -462,6 +462,16 @@
             <iconify-icon icon="material-symbols:clear-all"></iconify-icon>
             <span class="panel-content">Clear</span>
           </button>
+          <!-- Analysis labels: tag every analyzed element with its class
+               and who decided it (engine / you / AI). Click a chip to correct. -->
+          <button
+            class="btn"
+            id="labelsBtn"
+            title="Labels – run analysis and tag every element with its class and provenance"
+          >
+            <iconify-icon icon="material-symbols:label-outline"></iconify-icon>
+            <span class="panel-content">Labels</span>
+          </button>
           <!-- Wire-trace toggle -->
           <div class="switch-mode btn">
             <small class="switch-content">
@@ -1449,6 +1459,7 @@
     <script src="src/js/features/wireTracing.js"></script>
     <script src="src/js/features/highlights.js"></script>
     <script src="src/js/features/layers.js"></script>
+    <script src="src/js/features/labels.js"></script>
     <script src="src/js/features/history.js"></script>
     <script src="src/js/features/uiControls.js"></script>
     <script src="/assets/schema-editor/data/component-specs.js"></script>

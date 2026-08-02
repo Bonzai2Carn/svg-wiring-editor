@@ -74,6 +74,9 @@ Object.assign(MobileSVGEditor.prototype, {
 
         // ── Trigger overlay re-render so handles move with the view ──
         this._scheduleOverlayRender?.();
+        // Analysis label chips live in screen space, so they have to be
+        // re-projected on every camera change rather than riding the SVG.
+        this._schedulePositionLabels?.();
     },
 
     // ── rAF scheduler: batches pending transform state ────────

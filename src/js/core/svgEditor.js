@@ -81,6 +81,7 @@ class MobileSVGEditor {
         this.initAlignDistribute();     // alignDistribute.js
         this.initPropertyPanel();       // propertyPanel.js
         this.initGeometryEngine();      // geometryEngine.js  (spatial indices)
+        this.initLabels();              // labels.js  (analysis provenance view)
 
         // ── viewBox-based zoom: recompute base on container resize ──
         if (typeof ResizeObserver !== 'undefined') {
@@ -466,6 +467,9 @@ class MobileSVGEditor {
 
         // Canvas page background colour picker + preset swatches
         this.bindCanvasBackgroundControls();
+
+        // Analysis labels toggle (Inspect)
+        $('#labelsBtn').on('click', () => this.toggleLabels());
 
         // Smooth Trace toggle
         $('#smoothTraceBtn').on('click', () => {
