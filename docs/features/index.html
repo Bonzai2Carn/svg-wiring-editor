@@ -4,12 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Schema Editor Features — Wiring, Layers, Precision & Measurement | GINEXYS</title>
-<meta name="description" content="Detailed feature reference for GINEXYS Schema Editor: Manhattan routing, trace and highlight tools, layer management, grouping, precision snap, and measurement tools.">
+<meta name="description" content="Feature reference for GINEXYS Schema Editor: tool model and cursors, Manhattan routing, wire cutting and node editing, analysis Labels with provenance, layers, and the measurement tool.">
 <meta name="robots" content="index, follow">
 <link rel="canonical" href="https://ginexys.com/tools/schema-editor/docs/features/">
 <meta property="og:type" content="article">
 <meta property="og:title" content="Schema Editor Features — Wiring, Layers, Precision & Measurement | GINEXYS">
-<meta property="og:description" content="Detailed feature reference for GINEXYS Schema Editor: Manhattan routing, trace and highlight tools, layer management, grouping, precision snap, and measurement tools.">
+<meta property="og:description" content="Feature reference for GINEXYS Schema Editor: tool model and cursors, Manhattan routing, wire cutting and node editing, analysis Labels with provenance, layers, and the measurement tool.">
 <meta property="og:url" content="https://ginexys.com/tools/schema-editor/docs/features/">
 <meta property="og:site_name" content="GINEXYS">
 <script type="application/ld+json">
@@ -19,7 +19,7 @@
     {
       "@type": "TechArticle",
       "headline": "Schema Editor Features — Wiring, Layers, Precision & Measurement",
-      "description": "Detailed feature reference for GINEXYS Schema Editor: Manhattan routing, trace and highlight tools, layer management, grouping, precision snap, and measurement tools.",
+      "description": "Feature reference for GINEXYS Schema Editor: tool model and cursors, Manhattan routing, wire cutting and node editing, analysis Labels with provenance, layers, and the measurement tool.",
       "url": "https://ginexys.com/tools/schema-editor/docs/features/",
       "isPartOf": {
         "@type": "WebApplication",
@@ -122,44 +122,76 @@
   <article class="gx-docs-content"><h1 id="features-reference">Features Reference</h1>
 <p>This document provides a detailed reference for the advanced tools available in the Schematics Editor.</p>
 <hr>
-<h2 id="1-wiring-and-connectivity">1. Wiring and Connectivity</h2>
+<h2 id="1-tools-and-the-canvas">1. Tools and the canvas</h2>
+<h3 id="the-tool-model">The tool model</h3>
+<p>Every drawing tool is a <strong>one-shot action</strong>, not a mode. After a tool commits something it hands the canvas back to <strong>Select</strong>, so your next click manipulates what you just made.</p>
+<ul><li><strong>Tool lock (Q)</strong>: pins the active tool so it stays selected after each commit. Use it for repeat drawing. The <code>Lock tool</code> button in the Edit toolbar mirrors the shortcut.</li><li><strong>Escape</strong>: always cancels an in-progress draw and returns to Select.</li><li><strong>Space</strong>: temporarily activates the <strong>Hand</strong> tool for as long as you hold it, then restores the tool you were using. Middle-mouse drag pans from any tool.</li></ul>
+<h3 id="cursors">Cursors</h3>
+<p>The cursor tells you what a drag from the current position will do.</p>
+<div class="gx-table-wrap"><table><thead><tr><th>Over</th><th>Cursor</th><th>A drag will</th></tr></thead><tbody><tr><td>Empty canvas</td><td>default</td><td>marquee select</td></tr><tr><td>A draggable object</td><td><code>move</code></td><td>move it</td></tr><tr><td>A resize handle</td><td>directional</td><td>resize</td></tr><tr><td>A wire or measurement node</td><td><code>move</code></td><td>move that node</td></tr><tr><td>Hand tool, or Space held</td><td><code>grab</code></td><td>pan</td></tr></tbody></table></div>
+<h3 id="canvas-background">Canvas background</h3>
+<p>The <strong>Background</strong> group in the Edit toolbar sets the page colour: a picker plus presets (White, Paper, Blueprint tint, Slate, Ink, Transparent). This is a <strong>document property</strong>, not an editor theme, so it travels with export, save and round-trip, and it undoes. Dark mode remains a separate editor setting.</p>
+<h3 id="the-page-versus-the-surface">The page versus the surface</h3>
+<p><code>#_canvasBg</code> is the <strong>page</strong>: the printable area and the export viewport. The surface around it is unbounded. You can draw outside the page, it simply will not export. <strong>New Canvas</strong> sets the page size.</p>
+<hr>
+<h2 id="2-wiring-and-connectivity">2. Wiring and Connectivity</h2>
 <p>The Schematics Editor features a sophisticated connectivity engine specifically designed for electrical and logical diagrams.</p>
 <h3 id="manhattan-routing-wire-tool">Manhattan Routing (<code>Wire</code> Tool)</h3>
 <p>The <strong>Wire</strong> tool (W) uses Manhattan routing, which ensures that connections only use horizontal and vertical lines with 90 or 45-degree bends.</p>
-<ul><li><strong>How to use</strong>: Click a starting point, click to add anchor points, and double-click to finish.</li>
-<li><strong>Smooth Bends</strong>: Toggle the <strong>Smooth</strong> button in the toolbar to switch between sharp 90-degree corners and 45-degree chamfered bends.</li></ul>
+<ul><li><strong>How to use</strong>: Click a starting point, click to add anchor points, and double-click or press Enter to finish. Backspace retracts the last point.</li><li><strong>Smooth Bends</strong>: Toggle the <strong>Smooth</strong> button in the toolbar to switch between sharp 90-degree corners and 45-degree chamfered bends.</li><li><strong>Alt+click a wire</strong>: branches a new wire from that point.</li></ul>
+<h3 id="editing-an-existing-wire">Editing an existing wire</h3>
+<p>Select a single wire and it shows <strong>node handles</strong> instead of a bounding box: a larger circle at each end, a smaller one at every bend. Drag any of them to reshape the wire. Dropping an endpoint on a pin anchors it there; dropping it on empty canvas releases the anchor.</p>
+<h3 id="cutting-a-wire">Cutting a wire</h3>
+<p><strong>Double-click a wire</strong> to cut it at that point. A wire is one electrical run from connected pin to connected pin, so cutting produces <strong>two complete runs</strong>, each terminating in a <strong>connector</strong> node. The cut preserves every bend you drew. It never re-routes.</p>
+<p>A symbol picker then offers to place a component at the cut. The far half keeps its open connector so you can attach it to the symbol's exit pin deliberately.</p>
+<blockquote class="gx-note"><p><strong>Note</strong><br>Cutting is only offered on polyline wires. A path containing curves or several subpaths cannot be expressed as a cut without redrawing it, so the editor declines rather than silently flattening your geometry.</p></blockquote>
+<h3 id="geometry-is-never-re-routed-behind-your-back">Geometry is never re-routed behind your back</h3>
+<p>Moving or rotating a symbol <strong>re-anchors</strong> its attached wires: the affected endpoint follows the pin and its neighbouring vertex travels along the same axis, so an orthogonal wire stays orthogonal and every bend you placed survives.</p>
+<p>Full re-routing is a command you invoke, never a side effect. Use <strong>Ctrl+Shift+L</strong> (Straighten Wires) when you want the router to redraw a selection.</p>
 <h3 id="tracing-and-highlighting">Tracing and Highlighting</h3>
-<p>Use the <strong>Wiring</strong> accordion in the toolbar to analyze your diagram's connectivity:</p>
-<ul><li><strong>Trace Mode (Toggle Switch)</strong>: When ON, selecting a wire or component will highlight every connected element in real-time, allowing you to verify complete circuit paths.</li>
-<li><strong>Highlight Components</strong>: Automatically highlights all symbols on the canvas to distinguish them from background geometry.</li>
-<li><strong>Show Connections</strong>: Renders a temporary "netlist" overlay showing logical connections between pins.</li></ul>
+<p>Use the <strong>Inspect</strong> accordion in the toolbar to analyze connectivity:</p>
+<ul><li><strong>Trace Mode (Toggle Switch)</strong>: When ON, selecting a wire or component highlights every connected element in real time.</li><li><strong>Highlight Components</strong>: Highlights all symbols to distinguish them from background geometry.</li><li><strong>Show Connections</strong>: Renders a temporary netlist overlay showing logical connections between pins.</li><li><strong>Hovering a wire</strong> lights up its entire electrically connected net.</li></ul>
 <hr>
-<h2 id="2-arrangement-and-layers">2. Arrangement and Layers</h2>
+<h2 id="3-labels-analysis-and-provenance">3. Labels: analysis and provenance</h2>
+<p><strong>Inspect → Labels</strong> runs the geometry analysis and puts a chip on every analyzed element showing what the analysis decided it is. Click a chip to reclassify.</p>
+<h3 id="reading-a-chip">Reading a chip</h3>
+<p>The chip text is a shortcode; hover for the full class name.</p>
+<div class="gx-table-wrap"><table><thead><tr><th>Code</th><th>Class</th></tr></thead><tbody><tr><td><code>WR</code></td><td>wire</td></tr><tr><td><code>CMP</code></td><td>component</td></tr><tr><td><code>MOD</code></td><td>module</td></tr><tr><td><code>CON</code></td><td>connector</td></tr><tr><td><code>JNC</code></td><td>junction</td></tr><tr><td><code>INK</code></td><td>decoration, excluded from analysis</td></tr></tbody></table></div>
+<p>The chip's <strong>colour is the provenance</strong>, meaning who decided this class:</p>
+<div class="gx-table-wrap"><table><thead><tr><th>Appearance</th><th>Source</th><th>Meaning</th></tr></thead><tbody><tr><td>Blue</td><td>deterministic</td><td>The recognizer read an explicit label. Ground truth.</td></tr><tr><td>Amber, dashed, <code>?</code></td><td>inferred</td><td>The recognizer guessed from raw geometry. Worth confirming.</td></tr><tr><td>Green, <code>✓</code></td><td>you</td><td>You corrected it.</td></tr><tr><td>Violet, <code>✦</code></td><td>AI</td><td>The AI driver placed or relabelled it.</td></tr></tbody></table></div>
+<p>Hovering a chip previews its element. Clicking selects it, flies the camera to it if it is off-screen, and opens the reclassify menu.</p>
+<h3 id="corrections-are-recorded">Corrections are recorded</h3>
+<p>Changing a class records what the recognizer had said alongside what you chose. The legend bar shows the split across the drawing and offers those corrections as a JSON export. A human correction <strong>outranks</strong> any later analysis re-run, so your decision survives every subsequent edit.</p>
+<h3 id="one-analysis-every-surface">One analysis, every surface</h3>
+<p>Labels, the Layers <strong>Analysis</strong> view, <strong>ERC</strong>, the <strong>BOM/netlist</strong> and the <strong>Tags &amp; Artifacts</strong> panel all read the same index. Reclassifying updates all of them, and re-runs ERC if its panel is open.</p>
+<p>An element classified as a component but carrying no symbol is reported by ERC as <code>classified-but-unnamed</code>. The spec-driven rules (pin count, polarity, signal type) cannot run without a symbol, and would otherwise skip that element in silence.</p>
+<hr>
+<h2 id="4-arrangement-and-layers">4. Arrangement and Layers</h2>
 <h3 id="layer-management">Layer Management</h3>
-<p>Open the <strong>Side Panel</strong> and select the <strong>Layers</strong> tab to manage the depth and visibility of your diagram.</p>
-<ul><li><strong>Tree View</strong>: View all elements as a hierarchical list.</li>
-<li><strong>Visibility (👁)</strong>: Toggle the visibility of individual elements or groups.</li>
-<li><strong>Locking (🔒)</strong>: Prevent accidental transformation of background elements.</li>
-<li><strong>Ordering</strong>: Elements at the top of the list render in front of those below.</li></ul>
+<p>Open the <strong>Side Panel</strong> and select the <strong>Layers</strong> tab.</p>
+<ul><li><strong>Tree View</strong>: all elements as a hierarchical list.</li><li><strong>Analysis View</strong>: elements grouped into semantic buckets (wires, connectors, modules, components, junctions) with a class dropdown on each row.</li><li><strong>Visibility (👁)</strong> and <strong>Locking (🔒)</strong> per element or group.</li><li><strong>Ordering</strong>: elements at the top render in front.</li></ul>
+<p>Clicking any row selects the element <strong>and flies the camera to it</strong>. The same is true of an ERC finding and a Labels chip.</p>
 <h3 id="grouping-logic">Grouping logic</h3>
-<ul><li><strong>Group (Ctrl+G)</strong>: Combines selected elements into a single movable unit.</li>
-<li><strong>Ungroup (Ctrl+Shift+G)</strong>: Breaks a group back into its component parts.</li>
-<li><strong>Nested Groups</strong>: The editor supports infinite levels of grouping for complex component management.</li></ul>
+<ul><li><strong>Group (Ctrl+G)</strong> and <strong>Ungroup (Ctrl+Shift+G)</strong>, with nested groups supported.</li></ul>
+<h3 id="selection-and-resizing">Selection and resizing</h3>
+<ul><li>Drag empty canvas to marquee. Elements that would be captured light up in cyan <strong>while you drag</strong>, so you can see the result before committing.</li><li><strong>Symbols and multi-selections always scale uniformly.</strong> A resistor squashed to 40% height is a wrong resistor, not a smaller one, and a non-uniform group resize deforms each member individually. Hold <strong>Shift</strong> to force uniform scale on anything else.</li><li><strong>Shift+R</strong> rotates 90°, <strong>Shift+F</strong> flips.</li></ul>
 <hr>
-<h2 id="3-precision-and-measurement">3. Precision and Measurement</h2>
-<h3 id="the-measurement-system">The Measurement System</h3>
-<p>Select <strong>Measure</strong> (📏) in the bottom toolbar to configure the diagram scale.</p>
-<ul><li><strong>Units</strong>: Switch between <strong>Pixels</strong>, <strong>Metric</strong> (mm, cm, m), and <strong>Imperial</strong> (in, ft, yd).</li>
-<li><strong>Scale Calibration</strong>: Set a custom scale (e.g., <code>100px = 1m</code>).</li>
-<li><strong>Measurement Tool</strong>: Once calibrated, clicking and dragging on the canvas will display real-world distances in the status bar.</li></ul>
+<h2 id="5-precision-and-measurement">5. Precision and Measurement</h2>
+<p>Measure is a drawing tool, and its settings are separate from it.</p>
+<h3 id="scale-settings-set-once">Scale settings (set once)</h3>
+<p>The <strong>Scale</strong> group in the Edit toolbar holds the measurement unit and a <strong>Calibrate</strong> button. The 📏 button in the bottom toolbar opens the same dialog.</p>
+<ul><li><strong>Units</strong>: Pixels, Metric (mm, cm, m), Imperial (in, ft).</li><li><strong>Calibration</strong>: state how many pixels equal one unit, for example <code>100px = 25mm</code>. The readout beside the dropdown always shows the active scale.</li><li>Switching to <strong>px</strong> measures in raw canvas units and remembers your calibration for when you switch back.</li></ul>
+<h3 id="measuring">Measuring</h3>
+<p>Activate <strong>Measure</strong> in the Edit toolbar. It behaves exactly like the Wire tool:</p>
+<ul><li><strong>Click</strong> to add points. A measurement can be a multi-segment route, not only a straight hop.</li><li><strong>Double-click or Enter</strong> finishes, <strong>Backspace</strong> removes the last point, <strong>Escape</strong> cancels.</li><li><strong>Click a wire</strong> to measure its full routed length and segment count in one action.</li><li>Distance, angle and Δx/Δy update <strong>live</strong> as you move, before you commit.</li></ul>
+<p>A multi-point measurement gives a length per segment, the turn angle at each interior vertex, and a <code>Σ</code> total.</p>
+<h3 id="measurements-are-part-of-the-document">Measurements are part of the document</h3>
+<p>A finished measurement is a real annotation: it persists, serializes, exports and undoes. It is tagged as decoration so it can never enter the netlist as a wire.</p>
+<ul><li><strong>Select</strong> a measurement to get node handles, exactly like a wire.</li><li><strong>Drag a node</strong> to reshape it; every distance and angle recomputes.</li><li><strong>Double-click</strong> a measurement to add a node.</li><li>Endpoints do not snap to pins, because a measurement is not electrically connected to anything.</li></ul>
 <hr>
-<h2 id="4-3d-view-transformations">4. 3D View Transformations</h2>
-<p>A unique feature of the Schematics Editor is the ability to view and present 2D vector diagrams in 3D space.</p>
-<ul><li><strong>Tilt/Pitch</strong>: Tilts the diagram towards or away from the viewer.</li>
-<li><strong>Yaw</strong>: Rotates the diagram sideways.</li>
-<li><strong>Zoom Slider</strong>: Adjusts the overall scale while maintaining the 3D perspective.</li>
-<li><strong>Reset View</strong>: Instantly returns the canvas to a flat, 2D orientation at 100% scale.</li></ul>
-<blockquote class="note note">All 3D transformations are visual only and do not affect the underlying X/Y coordinates of your components. Exporting to SVG will save the 2D representation, while exporting to HTML will preserve the interactive 3D capabilities.</blockquote></article>
+<h2 id="6-view">6. View</h2>
+<ul><li><strong>Zoom</strong>, <strong>Fit</strong> and <strong>Rotate</strong> are always available, including while something is selected.</li><li><strong>Space+drag</strong> or middle-mouse pans. The wheel zooms at the cursor.</li><li><strong>Reset View</strong> returns to a flat orientation at 100%.</li></ul>
+<blockquote class="gx-note"><p><strong>Note</strong><br>The earlier 3D pitch and yaw transforms have been removed. They were applied as CSS transforms, which invalidated <code>getScreenCTM()</code> and put every selection handle in the wrong place. Zoom, pan and rotation are now pure SVG, so handle positions are always correct. Exported SVG is unaffected.</p></blockquote></article>
   <aside class="gx-docs-related">
     <p class="gx-docs-related-label">Related</p>
     <div class="gx-link-row"><a class="gx-link-chip" href="/tools/schema-editor/docs/getting-started.html">Getting Started</a>
