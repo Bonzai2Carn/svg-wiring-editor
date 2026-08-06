@@ -1499,7 +1499,7 @@
     <!-- Geometry Engine (4-phase pipeline — after canvas, before features) -->
     <script src="src/js/core/geometryEngine.js"></script>
 
-    <!-- Domain Kits — portfolio-managed, not in engine submodule -->
+    <!-- Domain Kits -->
     <script src="/assets/schema-editor/domains/domainManager.js"></script>
     <script src="/assets/schema-editor/domains/generalKit.js"></script>
     <!-- Deterministic Schematic Primitive Engine (DSPE) -->
@@ -1512,9 +1512,9 @@
     <script src="/assets/schema-editor/domains/softwareKit.js"></script>
     <script src="/assets/schema-editor/domains/constructionKit.js"></script>
 
-    <!-- AI layout bookkeeper + apply-ops handler are NOT loaded here: they are
-         the intelligence layer, injected at runtime by the OS shell (Pro).
-         A standalone/forked copy of this tool has no AI orchestration. -->
+    <!-- The assisted-drawing modules are not loaded here. They are optional
+         and supplied by the host at runtime; without them the editor works
+         normally, minus that path. -->
 
     <!-- Features -->
     <script src="src/js/features/viewTransform.js"></script>
@@ -1644,9 +1644,8 @@
         // CWS IPC: receive back-annotation from TAFNE (no-op when OS bridge absent)
         if (window.CwsBridge) {
           CwsBridge.onData(function (envelope) {
-            // Incoming lineage capture is intelligence-layer policy — the
-            // shell-provided GxProvenance module records it (no-op when the
-            // tool runs standalone/forked without that module injected).
+            // Incoming lineage is recorded by an optional host-provided
+            // capability; a no-op when it is not present.
             if (window.GxProvenance)
               window.GxProvenance.captureIncoming(envelope);
             if (envelope?.contentType === "svg-vector") {
@@ -1828,10 +1827,9 @@
             return;
           }
 
-          // gx:ai-apply-ops is handled by the INJECTED root module
-          // (assets/schema-editor/ai/applyOps.js), injected by the OS shell.
-          // The intelligence orchestration deliberately does NOT live in this
-          // forkable tool — see memory project_ai_ip_boundary.
+          // gx:ai-apply-ops is handled by an optional module the host supplies
+          // at runtime. It is not part of this tool; without it the editor works
+          // normally, minus the assisted-drawing path.
         });
 
         // VS Code: live-sync when the file is edited in the text editor

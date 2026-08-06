@@ -24,12 +24,12 @@
    document accumulates model-said-X / truth-was-Y pairs as a
    by-product of ordinary use.
 
-   IP boundary: this file is the VIEW. The scoring, the ranking rule
-   (a human correction outranks a later engine re-run) and the
-   correction corpus are policy and live in the injected
-   `window.GxSchemaTags`. Every call to it is behind a presence guard,
-   so a fork of this repo running standalone still gets working labels
-   and a working dropdown, just without the provenance layer.
+   This file is the VIEW. Scoring, the ranking rule (a human
+   correction outranks a later engine re-run) and the correction
+   corpus come from `window.GxSchemaTags`, an optional capability the
+   host may supply. Every call to it is behind a presence guard, so a
+   standalone build still gets working labels and a working dropdown,
+   just without the provenance layer.
 
    Chips are positioned in SCREEN space over the canvas, not in SVG,
    for the same reason the selection handles are: SVG scales

@@ -32,7 +32,7 @@
    the selection handles and the properties X/Y then render at that
    phantom boundary instead of on the shape you can see.
 
-   Public, deterministic, no dependencies: safe in the submodule.
+   Deterministic, no dependencies.
    Exposes window.GxPathGeo.
    ============================================================ */
 (function () {

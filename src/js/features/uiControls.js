@@ -402,10 +402,9 @@ ${svgData}
 
             // ── Step 5: Deliver ────────────────────────────────
             pipeline.step(5, 'running', 'Delivering…');
-            // Provenance assembly is intelligence-layer POLICY and lives in the
-            // shell-provided GxProvenance module (assets/os/provenance.js), NOT in
-            // this forkable tool. Standalone/forked builds have no GxProvenance, so
-            // the send simply carries no lineage — the tool still works.
+            // Lineage assembly is an optional host-provided capability. When
+            // window.GxProvenance is absent the send simply carries no lineage
+            // and the tool works exactly as before.
             const fullLineage = window.GxProvenance
                 ? window.GxProvenance.build('svg_wiring', CwsContracts.PROVENANCE_STAGES.ANALYSIS, {
                     source: diagram.name,
