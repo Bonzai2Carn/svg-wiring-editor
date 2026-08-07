@@ -1,2 +1,7 @@
 .DS_Store
 .playwright-cli
+scripts/demo-capture.mjs
+scripts/demo-chrome.mjs
+scripts/demo-render.sh
+scripts/orders.csv
+scripts/parts.csv
