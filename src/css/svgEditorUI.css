@@ -2060,6 +2060,127 @@ body:not(.dark-mode) .tafne-step-detail {
     width: 100%;
 }
 
+/* ── Received-tables modal: accordion + contained scroll ──────
+   A received batch can be a dozen sheets of 30 rows. Rendered flat, the
+   table set grew the modal past the viewport and pushed the actions
+   off-screen, and a wide table widened the modal itself because nothing
+   constrained it. Three fixes, each addressing one of those: the modal is
+   capped and column-flexed so the action row is always the last visible
+   thing, the table list scrolls as a body, and every table gets its own
+   horizontal scroll box so a 40-column sheet cannot widen its parent. */
+.tbl-modal {
+    max-width: min(760px, 94vw);
+    max-height: 86vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.tbl-modal .tbl-body {
+    overflow-y: auto;
+    overflow-x: hidden;
+    flex: 1 1 auto;
+    min-height: 0;
+    margin: 0 -4px;
+    padding: 0 4px;
+}
+
+.tbl-modal .modal-actions {
+    flex: 0 0 auto;
+    padding-top: 10px;
+}
+
+.tbl-acc {
+    margin-bottom: 8px;
+}
+
+.tbl-acc-hdr {
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    user-select: none;
+    list-style: none;
+}
+
+.tbl-acc-hdr::-webkit-details-marker {
+    display: none;
+}
+
+/* Disclosure caret, rotated by the open state — no JS, no icon font. */
+.tbl-acc-hdr::before {
+    content: '';
+    width: 0;
+    height: 0;
+    border-left: 4px solid currentColor;
+    border-top: 3.5px solid transparent;
+    border-bottom: 3.5px solid transparent;
+    transition: transform .15s ease;
+    flex: 0 0 auto;
+}
+
+.tbl-acc[open] > .tbl-acc-hdr::before {
+    transform: rotate(90deg);
+}
+
+.tbl-acc-name {
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tbl-acc-meta {
+    flex: 0 0 auto;
+    opacity: .7;
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+.tbl-scroll {
+    max-height: 320px;
+    overflow: auto;
+    overscroll-behavior: contain;
+}
+
+.tbl-preview {
+    border-collapse: collapse;
+    font-size: 11px;
+    /* Not width:100% — a wide sheet must scroll inside .tbl-scroll rather
+       than compress every column into unreadable slivers. */
+    width: max-content;
+    min-width: 100%;
+}
+
+.tbl-preview th,
+.tbl-preview td {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 3px 7px;
+    text-align: left;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tbl-preview th {
+    background: rgba(255, 255, 255, 0.05);
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+body:not(.dark-mode) .tbl-preview th,
+body:not(.dark-mode) .tbl-preview td {
+    border-color: rgba(0, 0, 0, 0.1);
+}
+
+body:not(.dark-mode) .tbl-preview th {
+    background: rgba(0, 0, 0, 0.04);
+}
+
 .ba-summary {
     font-size: 12px;
     color: rgba(255, 255, 255, 0.5);

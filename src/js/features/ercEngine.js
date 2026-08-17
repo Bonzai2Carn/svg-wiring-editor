@@ -108,8 +108,85 @@ Object.assign(MobileSVGEditor.prototype, {
                 }));
             },
         },
+        {
+            // The rule that keeps the other eleven honest.
+            //
+            // Every connection rule resolves a pin's role through
+            // `specs[symbol].pins[pinId]`. When that lookup misses — no spec for
+            // the symbol, or a spec whose pin is declared 'unspecified' — the rule
+            // finds nothing and the run still reports success. That is not a clean
+            // schematic, it is an unexamined one, and the two used to be
+            // indistinguishable in the output.
+            //
+            // This surfaces the difference. It is a warning rather than an error
+            // because the drawing is not wrong, it is unverified.
+            id: 'unverifiable-pins', severity: 'warning',
+            check(ctx) {
+                const out = [];
+                ctx.components.forEach(c => {
+                    const symbol = c.element?.getAttribute?.('data-symbol');
+                    if (!symbol || symbol === 'net-label') return;
+                    const spec = ctx.specs[symbol];
+                    const name = c.element?.getAttribute?.('data-refdes') || c.element?.id || c.id;
+                    if (!spec?.pins) {
+                        out.push({
+                            message: `${symbol} "${name}": no pin roles declared — connection rules cannot check it`,
+                            elementIds: [c.element?.id].filter(Boolean),
+                        });
+                        return;
+                    }
+                    const bare = Object.keys(spec.pins)
+                        .filter(k => (spec.pins[k]?.role || 'unspecified') === 'unspecified');
+                    if (bare.length) {
+                        out.push({
+                            message: `${symbol} "${name}": ${bare.length}/${Object.keys(spec.pins).length} `
+                                + `pin(s) have no declared role (${bare.join(', ')})`,
+                            elementIds: [c.element?.id].filter(Boolean),
+                        });
+                    }
+                });
+                return out;
+            },
+        },
 
     ],
+
+    /**
+     * How much of the schematic the connection rules were actually able to read.
+     *
+     * A verdict that omits this can only say "no errors found", which a reader
+     * will hear as "no errors exist". Returned alongside the findings so a caller
+     * (and `export_pipeline_graph`) can refuse to claim wire-correctness over
+     * pins nothing examined.
+     */
+    _ercCoverage(ctx) {
+        let total = 0, unverifiable = 0, componentsWithoutSpec = 0;
+        ctx.components.forEach(c => {
+            const symbol = c.element?.getAttribute?.('data-symbol');
+            if (!symbol || symbol === 'net-label') return;
+            const spec = ctx.specs[symbol];
+            if (!spec?.pins) {
+                componentsWithoutSpec++;
+                // A component with no spec contributes its drawn pins as unknown.
+                const drawn = c.element?.querySelectorAll?.('.pin-point')?.length || 0;
+                total += drawn;
+                unverifiable += drawn;
+                return;
+            }
+            Object.keys(spec.pins).forEach(k => {
+                total++;
+                if ((spec.pins[k]?.role || 'unspecified') === 'unspecified') unverifiable++;
+            });
+        });
+        return {
+            totalPins: total,
+            unverifiablePins: unverifiable,
+            verifiedPins: total - unverifiable,
+            componentsWithoutSpec,
+            // 1 when every pin carried a checkable role; 0 when none did.
+            ratio: total ? (total - unverifiable) / total : 1,
+        };
+    },
 
     // ── Connection-validity rules (separate pack, enabled when specs have pins) ──
     _CONNECTION_RULES: [
@@ -297,12 +374,31 @@ Object.assign(MobileSVGEditor.prototype, {
     ],
 
     // ── Run + panel ───────────────────────────────────────────
-    runErc() {
-        if (!this.graph?.nets?.length && !this.components?.length) {
-            this.showToast('Nothing analyzed yet — add components and wires first', 'error');
-            return;
-        }
-        const ctx = {
+    //
+    // One rule pack runner, used by every pack. Previously each of runErc /
+    // runErcStructured re-implemented this loop twice (once per pack); a
+    // third pack (_KNOWLEDGE_RULES) would have made it six copies of the
+    // same eleven lines. `.call(this, ctx)` matters: a rule's `check` reads
+    // `this._k...` helpers on knowledgeEngine.js's pack, so `rule.check(ctx)`
+    // (this = the rule object) would throw on every knowledge rule — Function
+    // objects are not bound to the array they live in.
+    _runRulePack(rules, ctx, findings) {
+        (rules || []).forEach(rule => {
+            try {
+                rule.check.call(this, ctx).forEach(f => findings.push({
+                    ...f, ruleId: rule.id,
+                    // A finding may declare its own severity (component-
+                    // value-mismatch distinguishes a definite wrong-unit
+                    // error from an ambiguous missing-unit warning within
+                    // one rule); otherwise fall back to the rule's default.
+                    severity: f.severity || rule.severity,
+                }));
+            } catch (_) { /* one broken rule must not kill the run */ }
+        });
+    },
+
+    _buildErcCtx() {
+        return {
             nets:       this.graph?.nets || [],
             components: (this.components || []).filter(c => c.element?.isConnected),
             wires:      (this.wires || []).filter(w => w.element?.isConnected),
@@ -311,20 +407,32 @@ Object.assign(MobileSVGEditor.prototype, {
             // classes the user set in Labels, not only what carries a symbol.
             unnamed:    this.unnamedComponents?.() || [],
         };
+    },
+
+    _runAllRulePacks(ctx) {
         const findings = [];
-        this._ERC_RULES.forEach(rule => {
-            try {
-                rule.check(ctx).forEach(f => findings.push({ ...f, ruleId: rule.id, severity: rule.severity }));
-            } catch (_) { /* one broken rule must not kill the run */ }
-        });
-        // Connection-validity rules (requires COMPONENT_SPECS.pins)
-        if (this._CONNECTION_RULES && ctx.specs && Object.values(ctx.specs).some(s => s.pins)) {
-            this._CONNECTION_RULES.forEach(rule => {
-                try {
-                    rule.check(ctx).forEach(f => findings.push({ ...f, ruleId: rule.id, severity: rule.severity }));
-                } catch (_) { /* one broken rule must not kill the run */ }
-            });
+        this._runRulePack(this._ERC_RULES, ctx, findings);
+        // Connection-validity, knowledge and bus/protocol rules all require
+        // COMPONENT_SPECS.pins — none can resolve anything without it.
+        // Each pack is a sibling script, not a hard dependency: `_runRulePack`
+        // skips a missing pack (rules || []) and `runErcStructured` guards the
+        // per-pack coverage fields, so ercEngine.js keeps working on a host
+        // that loaded it alone (as the multimeter layer).
+        if (ctx.specs && Object.values(ctx.specs).some(s => s.pins)) {
+            this._runRulePack(this._CONNECTION_RULES, ctx, findings);
+            this._runRulePack(this._KNOWLEDGE_RULES, ctx, findings);
+            this._runRulePack(this._BUS_RULES, ctx, findings);
         }
+        return findings;
+    },
+
+    runErc() {
+        if (!this.graph?.nets?.length && !this.components?.length) {
+            this.showToast('Nothing analyzed yet — add components and wires first', 'error');
+            return;
+        }
+        const ctx = this._buildErcCtx();
+        const findings = this._runAllRulePacks(ctx);
         this._renderErcPanel(findings, ctx);
     },
 
@@ -373,9 +481,9 @@ Object.assign(MobileSVGEditor.prototype, {
             </div>`;
         document.body.appendChild(panel);
 
-        panel.querySelector('#ercCloseBtn').addEventListener('click', () => panel.remove());
-        panel.querySelector('#ercBomCsvBtn').addEventListener('click', () => this._downloadBomCsv(bom));
-        panel.querySelector('#ercBomTafneBtn').addEventListener('click', () => {
+        window.GxPointer.onPress(panel.querySelector('#ercCloseBtn'), () => panel.remove());
+        window.GxPointer.onPress(panel.querySelector('#ercBomCsvBtn'), () => this._downloadBomCsv(bom));
+        window.GxPointer.onPress(panel.querySelector('#ercBomTafneBtn'), () => {
             const specs = window.COMPONENT_SPECS || {};
             const tables = [{
                 name: 'BOM',
@@ -397,7 +505,7 @@ Object.assign(MobileSVGEditor.prototype, {
             this.sendTablesToTafne(tables, 'design-check');
         });
         panel.querySelectorAll('.erc-row').forEach(row => {
-            row.addEventListener('click', () => {
+            window.GxPointer.onPress(row, () => {
                 this.clearAllHighlights?.();
                 const f = findings[+row.dataset.idx];
                 const els = f.elementIds
@@ -438,31 +546,34 @@ Object.assign(MobileSVGEditor.prototype, {
         if (!this.graph?.nets?.length && !this.components?.length) {
             return { findings: [], summary: 'no data' };
         }
-        const ctx = {
-            nets:       this.graph?.nets || [],
-            components: (this.components || []).filter(c => c.element?.isConnected),
-            wires:      (this.wires || []).filter(w => w.element?.isConnected),
-            specs:      window.COMPONENT_SPECS || {},
-            // Read through the shared analysis index so ERC and BOM see the
-            // classes the user set in Labels, not only what carries a symbol.
-            unnamed:    this.unnamedComponents?.() || [],
-        };
-        const findings = [];
-        this._ERC_RULES.forEach(rule => {
-            try {
-                rule.check(ctx).forEach(f => findings.push({ ...f, ruleId: rule.id, severity: rule.severity }));
-            } catch (_) {}
-        });
-        if (this._CONNECTION_RULES && ctx.specs && Object.values(ctx.specs).some(s => s.pins)) {
-            this._CONNECTION_RULES.forEach(rule => {
-                try {
-                    rule.check(ctx).forEach(f => findings.push({ ...f, ruleId: rule.id, severity: rule.severity }));
-                } catch (_) {}
-            });
-        }
+        const ctx = this._buildErcCtx();
+        const findings = this._runAllRulePacks(ctx);
         const errors = findings.filter(f => f.severity === 'error').length;
         const warnings = findings.filter(f => f.severity === 'warning').length;
-        return { findings: findings, errorCount: errors, warningCount: warnings, total: findings.length };
+        return {
+            findings: findings,
+            errorCount: errors,
+            warningCount: warnings,
+            total: findings.length,
+            // Never report a count of problems without the size of the window it
+            // was counted through. A caller that ignores this can still be wrong;
+            // a caller that never receives it cannot be right.
+            coverage: this._ercCoverage(ctx),
+            // Same discipline, for the knowledge pack: how many candidates
+            // (inductive loads, LEDs, switch controls, values) existed for it
+            // to reason about, separate from how many findings it raised.
+            // Guarded: knowledgeEngine.js is a sibling script, not a hard
+            // dependency — ercEngine.js must keep working (as the multimeter
+            // layer alone) on a host that never loaded it.
+            knowledgeCoverage: typeof this._knowledgeCoverage === 'function'
+                ? this._knowledgeCoverage(ctx) : null,
+            // And for the bus/protocol pack (busEngine.js): stable-gate the
+            // "logic analyzer" layer the same way. null — not 0 — means the
+            // pack was never loaded, so a caller cannot read "no bus findings"
+            // over a host that never ran the rules.
+            busCoverage: typeof this._busCoverage === 'function'
+                ? this._busCoverage(ctx) : null,
+        };
     },
 
     _downloadBomCsv(bom) {

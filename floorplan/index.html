@@ -51,6 +51,7 @@
     <script src="/assets/os/contracts.js"></script>
     <script src="/assets/os/mcp.js"></script>
     <script src="/assets/os/bridge.js"></script>
+    <script src="/assets/os/pointer.js"></script>
     <script src="/assets/js/gx-track.js"></script>
 
     <!-- External Libraries -->
@@ -912,6 +913,24 @@
           <button
             class="btn export-domain-btn"
             data-mode="software"
+            id="exportMermaidErdBtn"
+            title="Export ERD as a Mermaid erDiagram"
+          >
+            <iconify-icon icon="material-symbols:account-tree-outline"></iconify-icon>
+            <span class="panel-content">Mermaid ERD</span>
+          </button>
+          <button
+            class="btn export-domain-btn"
+            data-mode="software"
+            id="importMermaidErdBtn"
+            title="Import a Mermaid erDiagram onto the canvas"
+          >
+            <iconify-icon icon="material-symbols:input"></iconify-icon>
+            <span class="panel-content">Import Mermaid</span>
+          </button>
+          <button
+            class="btn export-domain-btn"
+            data-mode="software"
             id="exportFsmJsonBtn"
             title="Export FSM as JSON"
           >
@@ -935,6 +954,18 @@
           >
             <iconify-icon icon="material-symbols:send-outline"></iconify-icon>
             <span class="panel-content">→ TAFNE</span>
+          </button>
+          <!-- Closes the loop: edits made here go back to the sheet and cell the
+               table was promoted from. Enabled only when this schema HAS a
+               basis, i.e. it came from TAFNE. -->
+          <button
+            class="btn export-domain-btn"
+            data-mode="software"
+            id="sendSchemaAnnotationBtn"
+            title="Send schema edits back to TAFNE"
+          >
+            <iconify-icon icon="material-symbols:undo"></iconify-icon>
+            <span class="panel-content">Back-annotate</span>
           </button>
         </div>
       </div>
@@ -1473,11 +1504,30 @@
     <script src="/assets/schema-editor/domains/softwareKit.js"></script>
     <script src="/assets/schema-editor/domains/constructionKit.js"></script>
 
+    <!-- Deterministic Schematic Primitive Engine — software domain (SPE) -->
+    <script src="/assets/schema-editor/spe/grammar.js"></script>
+    <script src="/assets/schema-editor/spe/topology.js"></script>
+    <script src="/assets/schema-editor/spe/layout.js"></script>
+    <script src="/assets/schema-editor/spe/render.js"></script>
+    <script src="/assets/schema-editor/spe/catalog.js"></script>
+    <script src="/assets/schema-editor/spe/spe.js"></script>
+
+    <!-- Software design model (GxSchema) — public contract -->
+    <script src="src/js/domain/schemaIr.js"></script>
+    <script src="src/js/features/srcEngine.js"></script>
+
+    <!-- GxSchema private intelligence — portfolio-managed, not in the engine -->
+    <script src="/assets/schema-editor/data/type-dialects.js"></script>
+    <script src="/assets/schema-editor/data/serializers.js"></script>
+    <script src="/assets/schema-editor/domains/software/promote.js"></script>
+
     <!-- AI layout bookkeeper + apply-ops handler are NOT loaded here: they are
          the intelligence layer, injected at runtime by the OS shell (Pro).
          A standalone/forked copy of this tool has no AI orchestration. -->
 
     <!-- Features -->
+    <!-- Edge routing styles — must load before drawingTools uses them -->
+    <script src="src/js/features/edgeRouter.js"></script>
     <script src="src/js/features/viewTransform.js"></script>
     <script src="src/js/features/wiringDiagram.js"></script>
     <script src="src/js/features/wireTracing.js"></script>
@@ -1489,7 +1539,10 @@
     <script src="src/js/features/uiControls.js"></script>
     <script src="/assets/schema-editor/data/component-specs.js"></script>
     <script src="src/js/core/ctmAdapter.js"></script>
+    <script src="src/js/features/units.js"></script>
     <script src="src/js/features/ercEngine.js"></script>
+    <script src="src/js/features/knowledgeEngine.js"></script>
+    <script src="src/js/features/busEngine.js"></script>
 
     <script>
       $(document).ready(function () {
@@ -1582,8 +1635,13 @@
           window.editor.exportAsFsmJson(),
         );
         $("#exportXStateBtn").on("click", () => window.editor.exportAsXState());
+        $("#exportMermaidErdBtn").on("click", () => window.editor.exportAsMermaidErd());
+        $("#importMermaidErdBtn").on("click", () => window.editor.importMermaidErd());
         $("#sendFsmToTafneBtn").on("click", () =>
           window.editor.sendFsmToTafne(),
+        );
+        $("#sendSchemaAnnotationBtn").on("click", () =>
+          window.editor.sendSchemaAnnotation(),
         );
 
         // Gate + star toast — fires on first export per session
@@ -1614,7 +1672,20 @@
               window.editor.receiveSvgVector(envelope);
               return;
             }
-            if (envelope?.hints?.action !== "back-annotate") return;
+            var action = envelope?.hints?.action;
+            if (action === "load-vectors") {
+              window.editor.receiveVectorArtifacts(envelope);
+              return;
+            }
+            if (action === "load-pipeline") {
+              window.editor.receivePipelineArtifact(envelope);
+              return;
+            }
+            if (action === "load-tables" || action === "load-candidate-tables") {
+              window.editor.receiveTableArtifact(envelope);
+              return;
+            }
+            if (action !== "back-annotate") return;
             window.editor.receiveBackAnnotation(envelope);
           });
           // MCP pill: show when embedded in VS Code

@@ -287,7 +287,7 @@ Object.assign(MobileSVGEditor.prototype, {
             btn.className = 'gx-legend-export';
             btn.textContent = `${s.corrected} corrected ↓`;
             btn.title = 'Export the corrections as model-said / truth-was pairs';
-            btn.addEventListener('click', (e) => {
+            window.GxPointer.onPress(btn, (e) => {
                 e.stopPropagation();
                 this.exportCorrectionCorpus();
             });
@@ -338,7 +338,7 @@ Object.assign(MobileSVGEditor.prototype, {
             // on the right shape before the dropdown opens over the top.
             chip.addEventListener('mouseenter', () => this._peekLabelTarget(el, true));
             chip.addEventListener('mouseleave', () => this._peekLabelTarget(el, false));
-            chip.addEventListener('click', (ev) => {
+            window.GxPointer.onPress(chip, (ev) => {
                 ev.preventDefault();
                 ev.stopPropagation();
                 this._focusLabelTarget(el);
@@ -452,7 +452,7 @@ Object.assign(MobileSVGEditor.prototype, {
             item.innerHTML =
                 `<span class="gx-label-dot" style="--chip:${this._LABEL_COLORS[cls]}"></span>` +
                 `<b class="gx-menu-code">${this._labelCode(cls)}</b>${cls}`;
-            item.addEventListener('click', (ev) => {
+            window.GxPointer.onPress(item, (ev) => {
                 ev.stopPropagation();
                 this._closeLabelMenu();
                 if (cls !== current) this._reclassify(el, cls);
@@ -470,14 +470,14 @@ Object.assign(MobileSVGEditor.prototype, {
             this._labelMenuAway = (ev) => {
                 if (!menu.contains(ev.target)) this._closeLabelMenu();
             };
-            document.addEventListener('mousedown', this._labelMenuAway, true);
+            document.addEventListener('pointerdown', this._labelMenuAway, true);
         }, 0);
     },
 
     _closeLabelMenu() {
         document.getElementById('gxLabelMenu')?.remove();
         if (this._labelMenuAway) {
-            document.removeEventListener('mousedown', this._labelMenuAway, true);
+            document.removeEventListener('pointerdown', this._labelMenuAway, true);
             this._labelMenuAway = null;
         }
     },

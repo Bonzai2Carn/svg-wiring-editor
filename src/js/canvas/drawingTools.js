@@ -71,19 +71,47 @@ Object.assign(MobileSVGEditor.prototype, {
         const labels = { none: '— none', arrow: '→ arrow', triangle: '▶ triangle',
                          diamond: '◆ diamond', circle: '● circle', many: '⑃ many (crow\'s foot)' };
         const opts = this._WIRE_END_STYLES.map(s => `<option value="${s}">${labels[s]}</option>`).join('');
+
+        // The bar set the two ENDS of a wire and never its SHAPE, so the one
+        // property a relational diagram actually cares about was unreachable.
+        const R = window.GxEdgeRouter;
+        const routeStyles = R ? R.STYLES : ['direct', 'manhattan'];
+        const routeLabels = R ? R.LABELS : { direct: 'direct', manhattan: 'manhattan' };
+        const routeOpts = routeStyles
+            .map(s => `<option value="${s}">${routeLabels[s] || s}</option>`).join('');
+
         bar.innerHTML =
             `<label>Start <select data-endpoint="start">${opts}</select></label>` +
-            `<label>End <select data-endpoint="end">${opts}</select></label>`;
+            `<label>End <select data-endpoint="end">${opts}</select></label>` +
+            `<label>Route <select data-route="1">${routeOpts}</select></label>`;
         bar.style.cssText =
             'position:fixed;bottom:118px;left:50%;transform:translateX(-50%);display:flex;gap:12px;' +
             'padding:6px 12px;background:rgba(20,24,32,.92);color:#dfe6ee;' +
             'border:1px solid rgba(255,255,255,.14);border-radius:8px;font-size:12px;z-index:900;';
-        bar.querySelectorAll('select').forEach(sel => {
+        bar.querySelectorAll('select[data-endpoint]').forEach(sel => {
             sel.value = this._wireEndStyle[sel.dataset.endpoint];
             sel.addEventListener('change', () => {
                 this._wireEndStyle[sel.dataset.endpoint] = sel.value;
             });
         });
+        const routeSel = bar.querySelector('select[data-route]');
+        if (routeSel) {
+            routeSel.value = this._wireRouteStyle || 'manhattan';
+            routeSel.addEventListener('change', () => {
+                this._wireRouteStyle = routeSel.value;
+                // Smooth Trace forces `direct` and would silently override the
+                // pick; say so instead of letting the picker look broken.
+                if (this._smoothTrace) {
+                    this.showToast('Smooth Trace is ON — turn it off to use this route style', 'warning');
+                    return;
+                }
+                // Restyle the in-flight preview so the choice is visible now.
+                if (this._drawPreview && this._drawState?.points) {
+                    this._drawPreview.setAttribute('d',
+                        this._wirePathFromPoints(this._drawState.points));
+                }
+            });
+        }
         document.body.appendChild(bar);
     },
 
@@ -638,6 +666,10 @@ Object.assign(MobileSVGEditor.prototype, {
         const el = document.createElementNS(this.SVG_NS, 'path');
         el.setAttribute('d', d);
         el.setAttribute('fill', 'none');
+        // Remember the shape. A wire re-routed later (symbol drag, arrange pass)
+        // has to be redrawn in the style it was authored in — recomputing it
+        // from the current picker would silently restyle old wires.
+        el.setAttribute('data-route-style', this._activeRouteStyle());
         this._applyWireEndMarkers(el);
 
         // Store pin-connection metadata so wires can follow symbols when dragged
@@ -663,17 +695,32 @@ Object.assign(MobileSVGEditor.prototype, {
 
     // Build SVG path string from waypoints.  Manhattan mode reads _smoothTrace live
     // so toggling mid-draw immediately reflects in the preview.
-    _wirePathFromPoints(pts) {
-        if (!pts.length) return '';
+    // Route shape used to be a boolean (_smoothTrace: manhattan or 45°), which
+    // is two of the five shapes a diagram tool is expected to draw. It now
+    // delegates to GxEdgeRouter. _smoothTrace is kept as the legacy override so
+    // the existing Smooth Trace button and its keyboard shortcut keep working:
+    // when it is on, the route is direct regardless of the picker.
+    _wireRouteStyle: 'manhattan',
+
+    _activeRouteStyle() {
+        if (this._smoothTrace) return 'direct';
+        return this._wireRouteStyle || 'manhattan';
+    },
+
+    _wirePathFromPoints(pts, style) {
+        if (!pts || !pts.length) return '';
+        const R = window.GxEdgeRouter;
+        const chosen = style || this._activeRouteStyle();
+        if (R) return R.path(pts, chosen);
+
+        // Standalone fallback: the router is a sibling script, not a hard
+        // dependency. Degrade to the original two shapes rather than to a
+        // blank `d`, which would read as a vanished wire.
         let d = `M ${pts[0].x} ${pts[0].y}`;
         for (let i = 1; i < pts.length; i++) {
             const prev = pts[i - 1], curr = pts[i];
-            if (this._smoothTrace) {
-                d += ` L ${curr.x} ${curr.y}`;
-            } else {
-                // Manhattan: horizontal-first elbow
-                d += ` L ${prev.x} ${curr.y} L ${curr.x} ${curr.y}`;
-            }
+            if (chosen === 'direct') d += ` L ${curr.x} ${curr.y}`;
+            else d += ` L ${prev.x} ${curr.y} L ${curr.x} ${curr.y}`;
         }
         return d;
     },
@@ -730,7 +777,7 @@ Object.assign(MobileSVGEditor.prototype, {
                 <div class="se-sym-picker-body"></div>
             `;
             document.body.appendChild(picker);
-            picker.querySelector('.se-sym-picker-close').addEventListener('click', () => this._closeSymbolPicker());
+            window.GxPointer.onPress(picker.querySelector('.se-sym-picker-close'), () => this._closeSymbolPicker());
             picker.querySelector('.se-sym-picker-search').addEventListener('input', (ev) => this._filterSymbolPicker(ev.target.value));
         }
 
@@ -768,7 +815,7 @@ Object.assign(MobileSVGEditor.prototype, {
                     </div>
                     <div class="se-sym-picker-label">${sym.label}</div>
                 `;
-                item.addEventListener('click', () => {
+                window.GxPointer.onPress(item, () => {
                     // Parse the symbol's own SVG to find its pin-point elements (local coords)
                     const symParser = new DOMParser();
                     const symDoc = symParser.parseFromString(
@@ -846,7 +893,7 @@ Object.assign(MobileSVGEditor.prototype, {
             if (!picker.contains(ev.target)) this._closeSymbolPicker();
         };
         picker._onOutside = onOutside;
-        document.addEventListener('mousedown', onOutside, true);
+        document.addEventListener('pointerdown', onOutside, true);
 
         // Escape → close
         const onKey = (ev) => { if (ev.key === 'Escape') this._closeSymbolPicker(); };
@@ -875,7 +922,7 @@ Object.assign(MobileSVGEditor.prototype, {
         const picker = document.getElementById('se-sym-picker');
         if (!picker || picker.style.display === 'none') return;
         picker.style.display = 'none';
-        if (picker._onOutside) { document.removeEventListener('mousedown', picker._onOutside, true); picker._onOutside = null; }
+        if (picker._onOutside) { document.removeEventListener('pointerdown', picker._onOutside, true); picker._onOutside = null; }
         if (picker._onKey)     { document.removeEventListener('keydown',   picker._onKey,     true); picker._onKey = null; }
     },
 });
