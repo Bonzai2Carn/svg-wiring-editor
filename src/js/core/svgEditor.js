@@ -536,19 +536,13 @@ class MobileSVGEditor {
     // export viewport. #svgDisplay is the infinite surface it floats on, and always
     // fills its wrapper at 100%. Keeping those two ideas separate is the whole
     // point: you can draw outside the page, you just won't export it.
+    //
+    // The page itself is NOT written here. It is created at mount time by
+    // _ensurePageRect, which every document goes through — a blank canvas and an
+    // imported figure get the same page from the same code, so a figure cannot
+    // end up as the one kind of document with no dimension of its own.
     _blankCanvasSvg(w, h) {
-        return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}">
-  <!-- Canvas page background: white so it stands out from the dark editor -->
-  <rect id="_canvasBg" width="${w}" height="${h}" fill="white"
-    stroke="rgba(0,0,0,0.15)" stroke-width="1"
-    data-se-system="true"
-    filter="url(#_pageShadow)"/>
-  <defs data-se-system="true">
-    <filter id="_pageShadow" x="-2%" y="-2%" width="104%" height="104%">
-      <feDropShadow dx="0" dy="2" stdDeviation="6" flood-color="rgba(0,0,0,0.3)"/>
-    </filter>
-  </defs>
-</svg>`;
+        return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}"></svg>`;
     }
 
     // Boot state. Without this the editor opened onto a bare #svgDisplay still

@@ -710,7 +710,7 @@ ${svgData}
         const built = [];
         let rejected = 0;
         for (const it of items) {
-            const svg = this._artifactToSvg(it);
+            const svg = await this._artifactToSvg(it);
             if (svg) built.push({ it, svg }); else rejected++;
         }
         if (!built.length) {
@@ -755,7 +755,7 @@ ${svgData}
      * missed shows up as a visible gap between them rather than as a number in
      * `meta.coverage` that nobody reads.
      */
-    _artifactToSvg(it) {
+    async _artifactToSvg(it) {
         // Legacy single-SVG item (pre-Scene senders).
         if (!it.raster && !it.scene && typeof it.svg === 'string') {
             const v = window.CwsContracts?.VALIDATORS?.['svg-vector'];
@@ -770,21 +770,67 @@ ${svgData}
                 return null;
             }
         }
+        if (!scene && !it.raster) return null;
+
+        const dim = await this._artifactDimensions(it);
+        if (!dim) {
+            // Refused rather than defaulted. A figure mounted at a made-up size
+            // looks like a figure, so nobody checks it — and every measurement
+            // taken on that artboard is then wrong by an unknown factor.
+            console.warn('[schema] artifact has no determinable dimension:', it.name);
+            return null;
+        }
+
         // One renderer, shared with the PDF tool via GxScene.toSvg — mounting a
         // Scene here and embedding the same Scene there must produce identical
         // pixels, or every approved round trip would visibly redraw the figure.
-        if (!scene && !it.raster) return null;
         if (window.GxScene) {
-            return window.GxScene.toSvg(scene || { width: it.width, height: it.height, nodes: [] },
+            return window.GxScene.toSvg(
+                scene || { width: dim.w, height: dim.h, nodes: [] },
                 { backdrop: it.raster || null });
         }
         // No GxScene injected (forked standalone): a raster-only underlay is
         // still honest — it just is not editable, which is what it looks like.
         if (!it.raster) return null;
-        const w = Math.round(it.width || 200), h = Math.round(it.height || 200);
-        return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">` +
-            `<image href="${this._escHtml(it.raster)}" x="0" y="0" width="${w}" height="${h}" ` +
-            `data-gx-underlay="true" data-se-system="true" style="pointer-events:none" preserveAspectRatio="none" /></svg>`;
+        return `<svg xmlns="http://www.w3.org/2000/svg" width="${dim.w}" height="${dim.h}" viewBox="0 0 ${dim.w} ${dim.h}">` +
+            `<image href="${this._escHtml(it.raster)}" x="0" y="0" width="${dim.w}" height="${dim.h}" ` +
+            `data-gx-underlay="true" data-se-system="true" style="pointer-events:none" preserveAspectRatio="xMidYMid meet" /></svg>`;
+    },
+
+    /**
+     * The dimension an incoming figure is entitled to be mounted at.
+     *
+     * Order of evidence, most authoritative first:
+     *   1. what the sender stated (`width`/`height`) — it cut the crop and knows
+     *      the units the geometry beside it is expressed in;
+     *   2. the Scene's own extent, which is the same number by construction;
+     *   3. the raster's intrinsic pixel size, asked of the image itself.
+     *
+     * There is deliberately no fourth entry. A default box is the failure this
+     * function exists to remove: it silently rescales artwork to a size nobody
+     * chose, and the distortion is invisible until someone measures something.
+     */
+    async _artifactDimensions(it) {
+        const stated = (a, b) => {
+            const w = Math.round(Number(a)), h = Math.round(Number(b));
+            return (isFinite(w) && isFinite(h) && w > 0 && h > 0) ? { w, h } : null;
+        };
+        return stated(it.width, it.height)
+            || stated(it.scene?.width, it.scene?.height)
+            || (it.raster ? await this._rasterIntrinsicSize(it.raster) : null);
+    },
+
+    /** Natural pixel size of a data-URL raster, or null if it will not decode. */
+    _rasterIntrinsicSize(href) {
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => resolve(
+                img.naturalWidth > 0 && img.naturalHeight > 0
+                    ? { w: img.naturalWidth, h: img.naturalHeight }
+                    : null);
+            img.onerror = () => resolve(null);
+            img.src = href;
+        });
     },
 
     /**

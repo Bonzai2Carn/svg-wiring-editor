@@ -429,6 +429,9 @@ Object.assign(MobileSVGEditor.prototype, {
         const importedBg = contentRoot.querySelector('#_canvasBg');
         if (importedBg) importedBg.setAttribute('data-se-system', 'true');
 
+        // Everything mounted here gets a page. See _ensurePageRect.
+        this._ensurePageRect(contentRoot, svgElement);
+
         // If a white canvas page background was imported (_canvasBg), move _gridLayer
         // to sit just after it so the grid is visible on the white surface.
         this._repositionGridLayer();
@@ -454,6 +457,104 @@ Object.assign(MobileSVGEditor.prototype, {
         // _mountParsedSvg wipes and recreates the DOM, so the old observer target
         // is gone — without this call the layers panel never auto-updates after load.
         this._initLayerObserver?.();
+    },
+
+    /**
+     * Guarantee the mounted document owns a page rect naming its OWN dimension.
+     *
+     * #svgDisplay is the infinite surface every artboard floats on. Its viewBox
+     * is a camera: fit, zoom and switching artboards all rewrite it. A document
+     * that states no page of its own therefore has no dimension of its own — it
+     * borrows the viewport's, and the viewport belongs to whatever is on screen
+     * rather than to the artwork.
+     *
+     * That is what put an imported figure at the wrong size. Nothing rescaled
+     * it; it never had a size to keep. #_canvasBg is what fitToView frames, what
+     * the exporter crops to, what the grid is laid over and what _canvasToScene
+     * measures a send-back against — four subsystems that were all reading the
+     * camera for figures that arrived without a page.
+     *
+     * An image is content ON a page, never the page itself.
+     */
+    _ensurePageRect(contentRoot, srcSvg) {
+        if (!contentRoot || contentRoot.querySelector('#_canvasBg')) return;
+        const box = this._documentBox(contentRoot, srcSvg);
+        if (!box) return;
+
+        const NS = this.SVG_NS;
+        // The shadow filter has to exist in THIS document before anything points
+        // at it. An unresolvable filter reference does not degrade to "no
+        // shadow" — the SVG spec drops the element entirely, so the page would
+        // simply not render.
+        let shadow = this.$svgDisplay[0].querySelector('#_pageShadow');
+        if (!shadow) {
+            const defs = document.createElementNS(NS, 'defs');
+            defs.setAttribute('data-se-system', 'true');
+            defs.innerHTML =
+                '<filter id="_pageShadow" x="-2%" y="-2%" width="104%" height="104%">' +
+                '<feDropShadow dx="0" dy="2" stdDeviation="6" flood-color="rgba(0,0,0,0.3)"/>' +
+                '</filter>';
+            this.$svgDisplay[0].appendChild(defs);
+            shadow = defs.querySelector('#_pageShadow');
+        }
+
+        const rect = document.createElementNS(NS, 'rect');
+        rect.id = '_canvasBg';
+        rect.setAttribute('x', String(box.x));
+        rect.setAttribute('y', String(box.y));
+        rect.setAttribute('width', String(box.w));
+        rect.setAttribute('height', String(box.h));
+        rect.setAttribute('fill', 'white');
+        rect.setAttribute('stroke', 'rgba(0,0,0,0.15)');
+        rect.setAttribute('stroke-width', '1');
+        rect.setAttribute('data-se-system', 'true');
+        // Recorded so a send-back can tell a page the document declared from one
+        // this editor inferred, and weight the second less.
+        rect.setAttribute('data-gx-page-source', box.source);
+        if (shadow) rect.setAttribute('filter', 'url(#_pageShadow)');
+        contentRoot.insertBefore(rect, contentRoot.firstChild);
+    },
+
+    /**
+     * The page box for a document that did not state one, most authoritative
+     * evidence first: its viewBox, then its width/height, then the bounds of
+     * what it actually drew.
+     *
+     * The last is the weakest and still beats a constant: a figure framed to its
+     * own ink is at worst cropped tight, whereas a default page is a claim about
+     * size that happens to be false.
+     */
+    _documentBox(contentRoot, srcSvg) {
+        const vb = (srcSvg?.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number);
+        if (vb.length === 4 && vb.every(isFinite) && vb[2] > 0 && vb[3] > 0) {
+            return { x: vb[0], y: vb[1], w: vb[2], h: vb[3], source: 'viewbox' };
+        }
+        const w = parseFloat(srcSvg?.getAttribute('width'));
+        const h = parseFloat(srcSvg?.getAttribute('height'));
+        if (isFinite(w) && isFinite(h) && w > 0 && h > 0) {
+            return { x: 0, y: 0, w, h, source: 'size-attrs' };
+        }
+        const b = this._contentBox(contentRoot);
+        return b ? { ...b, source: 'content-bounds' } : null;
+    },
+
+    /** Union of the drawn children's bounds, ignoring editor infrastructure. */
+    _contentBox(contentRoot) {
+        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+        Array.from(contentRoot.children).forEach((el) => {
+            // The grid is painted across the whole surface by design; measuring
+            // it would report the viewport back as the document's size, which is
+            // the exact confusion this pass exists to end.
+            if (el.id === '_gridLayer' || el.tagName === 'defs') return;
+            if (el.classList?.contains('selection-handle-group')) return;
+            let b;
+            try { b = el.getBBox(); } catch (_) { return; }
+            if (!b || (!b.width && !b.height)) return;
+            x0 = Math.min(x0, b.x); y0 = Math.min(y0, b.y);
+            x1 = Math.max(x1, b.x + b.width); y1 = Math.max(y1, b.y + b.height);
+        });
+        if (!isFinite(x0) || x1 <= x0 || y1 <= y0) return null;
+        return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
     },
 
 
