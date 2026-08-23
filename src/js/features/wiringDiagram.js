@@ -215,9 +215,23 @@ Object.assign(MobileSVGEditor.prototype, {
                                 const hasContent = extracted.subpaths.some(sp => sp.segs.length || sp.curves.length)
                                     || extracted.filledRects.length;
                                 if (hasContent) {
+                                    // Labels come from getTextContent, not from the op
+                                    // stream: the op stream carries glyph indices into
+                                    // a subset font, so reading text there means
+                                    // reimplementing CMap decoding. pdf.js already did
+                                    // that, and on a schematic the labels ARE the
+                                    // meaning — a sheet with no R1, no GND and no pin
+                                    // names is a picture of a circuit, not a circuit.
+                                    let textSvg = '';
+                                    try {
+                                        textSvg = this._pdfTextToSvg(
+                                            await page.getTextContent(), viewport);
+                                    } catch (txtErr) {
+                                        console.warn(`[PDF] text layer failed on P${i}:`, txtErr);
+                                    }
                                     pages.push({
                                         name: numPages > 1 ? `${file.name} - P${i}` : file.name,
-                                        svgContent: GxCtmAdapter.subpathsToSvg(extracted, viewport),
+                                        svgContent: GxCtmAdapter.subpathsToSvg(extracted, viewport, textSvg),
                                         sourceFormat: sourceExt,
                                     });
                                     continue;
@@ -277,6 +291,63 @@ Object.assign(MobileSVGEditor.prototype, {
                 return pages;
             })
             .finally(() => URL.revokeObjectURL(url));
+    },
+
+    /**
+     * pdf.js text items -> <text> elements in viewport space.
+     *
+     * Each item carries its own text matrix in PDF space; composing that with
+     * the viewport transform gives the baseline origin directly, which is what
+     * <text> wants. The y axis flips between the two spaces, so the glyphs are
+     * un-flipped with a local scale(1,-1) rather than by negating coordinates —
+     * negating would put the baseline in the right place and the glyphs upside
+     * down, which is the classic version of this bug.
+     *
+     * Rotated labels (net names along a vertical bus) keep their rotation
+     * because the matrix is used whole rather than reduced to a position.
+     */
+    _pdfTextToSvg(textContent, viewport) {
+        const items = (textContent && textContent.items) || [];
+        if (!items.length) return '';
+        const vt = viewport.transform;
+        const mul = (a, b) => [
+            a[0] * b[0] + a[2] * b[1], a[1] * b[0] + a[3] * b[1],
+            a[0] * b[2] + a[2] * b[3], a[1] * b[2] + a[3] * b[3],
+            a[0] * b[4] + a[2] * b[5] + a[4], a[1] * b[4] + a[3] * b[5] + a[5],
+        ];
+        const esc = (t) => String(t)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        const r = (n) => Math.round(n * 100) / 100;
+
+        const parts = [];
+        for (const it of items) {
+            const str = it && it.str;
+            if (!str || !str.trim() || !it.transform) continue;
+            const m = mul(vt, it.transform);
+            // Font size is the length of the transformed text-space y basis.
+            const size = Math.hypot(m[1], m[3]) || 8;
+            if (size < 0.4) continue;              // sub-visible, not a label
+            // The matrix ALREADY carries the font size — a text matrix maps a
+            // 1-unit em box into place. Setting font-size beside it multiplies
+            // the two, which is why the first version rendered 6.66pt labels at
+            // 44pt. Normalise the basis vectors out and let font-size carry the
+            // scale on its own, so the attribute means what it says.
+            const n = [m[0] / size, m[1] / size, m[2] / size, m[3] / size];
+            parts.push(
+                `<text transform="matrix(${r(n[0])} ${r(n[1])} ${r(n[2])} ${r(n[3])} ` +
+                `${r(m[4])} ${r(m[5])}) scale(1,-1)" font-size="${r(size)}" ` +
+                `font-family="monospace" fill="rgb(60,60,60)" ` +
+                // Labels draw, but they are not geometry: 'ink' keeps them out
+                // of wire/component classification, where a word would otherwise
+                // be scored as a shape and land in the netlist.
+                `data-geo-class="ink" data-gx-label="${esc(str.trim())}" ` +
+                `style="pointer-events:none">${esc(str)}</text>`
+            );
+        }
+        return parts.length
+            ? `<g data-gx-textlayer="true" data-geo-class="ink">${parts.join('')}</g>`
+            : '';
     },
 
     ungroupAll(svgElement) {
@@ -860,9 +931,11 @@ Object.assign(MobileSVGEditor.prototype, {
         }
     },
 
-    isWire($element) {
-        return this.wires.some(w => w.element === $element[0]);
-    },
+    // isWire lives in geometryEngine.js. A second copy here used to shadow it —
+    // this file loads later, so the prototype ended up with the older version,
+    // the one that compares against w.element only. Every click lands on the
+    // invisible .wire-hitbox rather than the visual path, so that version
+    // answered "no" for every wire a user could actually click.
 
     showElementInfo($element) {
         const tag = $element[0].tagName;

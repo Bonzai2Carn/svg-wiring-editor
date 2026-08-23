@@ -71,6 +71,37 @@ window.GxCtmAdapter = (function () {
         let subpathStartX = 0, subpathStartY = 0;
         let pendingRect = null;
 
+        // -- Scanline-artwork detection ---------------------------------------
+        // A raster logo placed in a CAD drawing is exported as a long run of
+        // filled hairline rectangles, one per scan row. The Arduino sheet does
+        // this twice and it accounts for 6280 of its 6307 rectangles: four
+        // fifths of the document, none of it circuitry.
+        //
+        // The signature is a CONTIGUOUS run of filled rects sharing a fill
+        // colour and a constant thin dimension. Real drawings put 2-4 filled
+        // rects in a row (a pin, a junction dot, a filled arrow); they do not
+        // put dozens. Detecting it on the op stream is what makes it reliable:
+        // "consecutive" is information that exists here and nowhere downstream,
+        // and it is what separates a traced bitmap from a hatch of real shapes.
+        const ARTWORK_RUN_MIN = 24;
+        const artworkRuns = [];
+        let rectRun = null;
+        const _runKey = (rect, fc) =>
+            fc.join(',') + '|' + Math.round(Math.min(rect.w, rect.h) * 20);
+        const _closeRun = () => {
+            if (rectRun && rectRun.members.length >= ARTWORK_RUN_MIN) artworkRuns.push(rectRun);
+            rectRun = null;
+        };
+        const _noteFilledRect = (rect, fc, subpath) => {
+            // Only hairlines qualify. A run of chunky filled rects is a bar
+            // chart or a legend, and losing those to "decoration" would be a
+            // worse error than the one this fixes.
+            if (Math.min(rect.w, rect.h) > 1.2) { _closeRun(); return; }
+            const key = _runKey(rect, fc);
+            if (rectRun && rectRun.key === key) rectRun.members.push(subpath);
+            else { _closeRun(); rectRun = { key, members: [subpath] }; }
+        };
+
         const bufferSeg = (ax, ay, bx, by) => {
             currentSubpath.segs.push({ ax, ay, bx, by });
         };
@@ -208,12 +239,20 @@ window.GxCtmAdapter = (function () {
                 case OPS.closeFillStroke:
                 case OPS.closeEOFillStroke:
                     currentSubpath.filled = true;
-                    if (pendingRect) filledRects.push({ ...pendingRect });
+                    if (pendingRect) {
+                        filledRects.push({ ...pendingRect });
+                        _noteFilledRect(pendingRect, fillColor, currentSubpath);
+                    } else {
+                        // A fill that is not a plain rect ends any run: scanline
+                        // artwork is rects and nothing else.
+                        _closeRun();
+                    }
                     pendingRect = null;
                     break;
                 case OPS.stroke:
                 case OPS.closeStrokePath:
                     pendingRect = null;
+                    _closeRun();
                     break;
                 case OPS.moveTo:
                     openSubpath(null);
@@ -243,8 +282,14 @@ window.GxCtmAdapter = (function () {
         if (currentSubpath.segs.length > 0 || currentSubpath.curves.length > 0) {
             subpaths.push(currentSubpath);
         }
+        _closeRun();
 
-        return { subpaths, filledRects };
+        // Marked, never dropped. The logo still draws exactly as it did; it just
+        // stops claiming to be six thousand circuit components.
+        let artworkCount = 0;
+        artworkRuns.forEach(run => run.members.forEach(sp => { sp.artwork = true; artworkCount++; }));
+
+        return { subpaths, filledRects, artworkCount };
     }
 
     // ── Serialize extracted primitives to a schema-editor SVG ─────────────
@@ -252,7 +297,7 @@ window.GxCtmAdapter = (function () {
     //   open stroked subpaths → <path> tagged data-geo-class="wire"
     //   closed/filled subpaths & filledRects → tagged "component"
     //   curves → untagged <path> (heuristic classification decides)
-    function subpathsToSvg({ subpaths, filledRects }, viewport) {
+    function subpathsToSvg({ subpaths, filledRects }, viewport, textSvg) {
         const vt = viewport.transform;
         const r = (n) => Math.round(n * 100) / 100;
         const world = (ctm, x, y) => {
@@ -268,6 +313,13 @@ window.GxCtmAdapter = (function () {
         };
 
         const parts = [];
+        // Artwork is accumulated as path DATA keyed by paint, not as elements.
+        // A traced logo is thousands of subpaths that share one fill and never
+        // move relative to each other, so they are one <path> with thousands of
+        // subpaths — identical pixels, and the renderer walks one node per frame
+        // instead of six thousand. This is the difference between a schematic
+        // that pans and one that stutters.
+        const artByPaint = new Map();
 
         subpaths.forEach(sp => {
             if (!sp.segs.length && !sp.curves.length) return;
@@ -299,10 +351,21 @@ window.GxCtmAdapter = (function () {
             if (!d) return;
 
             const closedish = sp.closed || sp.filled;
-            const geoClass = sp.curves.length ? null : (closedish ? 'component' : 'wire');
+            // 'ink' is the engine's existing word for decoration: it draws but
+            // is excluded from wire/component analysis. A traced logo is exactly
+            // that, so it needs no new concept and no new branch downstream.
+            const geoClass = sp.artwork ? 'ink'
+                : (sp.curves.length ? null : (closedish ? 'component' : 'wire'));
             const fill = sp.filled ? css(sp.fillColor) : 'none';
+            const shape = `${d.trim()}${sp.closed ? ' Z' : ''}`;
+            if (sp.artwork) {
+                const paint = `${fill}|${stroke}|${w}`;
+                const prev = artByPaint.get(paint);
+                artByPaint.set(paint, prev ? `${prev} ${shape}` : shape);
+                return;
+            }
             parts.push(
-                `<path d="${d.trim()}${sp.closed ? ' Z' : ''}" fill="${fill}" ` +
+                `<path d="${shape}" fill="${fill}" ` +
                 `stroke="${stroke}" stroke-width="${w}"` +
                 (geoClass ? ` data-geo-class="${geoClass}"` : '') + '/>'
             );
@@ -316,9 +379,24 @@ window.GxCtmAdapter = (function () {
             );
         });
 
+        // One group, painted first so it sits behind the drawing. Collapsing it
+        // into a handful of rows is also the difference between a layers panel a
+        // person can read and six thousand identical entries.
+        const artParts = [];
+        artByPaint.forEach((d, paint) => {
+            const [fill, stroke, w] = paint.split('|');
+            artParts.push(`<path d="${d}" fill="${fill}" stroke="${stroke}" ` +
+                `stroke-width="${w}" data-geo-class="ink"/>`);
+        });
+        const artwork = artParts.length
+            ? `<g data-gx-artwork="true" data-geo-class="ink" aria-label="Raster artwork" ` +
+              `style="pointer-events:none">${artParts.join('')}</g>`
+            : '';
+
         return `<svg xmlns="http://www.w3.org/2000/svg" ` +
             `viewBox="0 0 ${r(viewport.width)} ${r(viewport.height)}" ` +
-            `width="${r(viewport.width)}" height="${r(viewport.height)}">${parts.join('')}</svg>`;
+            `width="${r(viewport.width)}" height="${r(viewport.height)}">` +
+            `${artwork}${parts.join('')}${textSvg || ''}</svg>`;
     }
 
     return { extractSubpaths, subpathsToSvg };

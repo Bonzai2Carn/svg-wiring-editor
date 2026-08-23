@@ -119,6 +119,7 @@
 .wire-endpoint {
     fill: #feb84f !important;
     stroke: #4facfe !important;
+    stroke-width: 8px;
     filter: drop-shadow(0 0 4px rgba(79, 172, 254, 0.85)) !important;
 }
 

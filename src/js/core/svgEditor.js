@@ -272,6 +272,7 @@ class MobileSVGEditor {
         $('#exportViewBtn').on('click',   () => this.exportCurrentView());
         $('#exportHtmlBtn').on('click',   () => this.exportAsHtml());
         $('#exportJsonBtn').on('click',   () => this.exportAsJson());
+        $('#exportNetlistBtn').on('click', () => this.exportNetlist());
         $('#batchExportBtn').on('click',  () => this.batchExport());
         $('#toggleMiniMapBtn').on('click',() => this.toggleMiniMap());
         $('#darkModeBtn').on('click',     () => this.toggleDarkMode());

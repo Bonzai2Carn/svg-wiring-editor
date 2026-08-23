@@ -110,7 +110,7 @@ Object.assign(MobileSVGEditor.prototype, {
             const isSpecialPath = wire.$element?.is('path') &&
                 wire.$element.attr('d') &&
                 /[lvVhH]/.test(wire.$element.attr('d'));
-            wire.$element?.css({ stroke: isSpecialPath ? '#4facfe' : color });
+            wire.$element?.css({ stroke: isSpecialPath ? '#4facfe' : color, 'stroke-width': '5px' });
         });
 
         const after = this.captureHighlightState();

@@ -135,6 +135,7 @@
     <link rel="stylesheet" href="/assets/css/ginexys-modals-tokens.css" />
     <link rel="stylesheet" href="/assets/css/ginexys-modals.css" />
     <script src="/assets/js/ginexys-modals.js" defer></script>
+    <script src="/assets/js/ginexys-billing.js" defer></script>
     <script src="/assets/js/ginexys-auth.js" defer></script>
     <script src="/assets/js/ginexys-settings.js" defer></script>
     <script src="/assets/js/ginexys-gate.js" defer></script>
@@ -887,6 +888,14 @@
             <iconify-icon icon="material-symbols:data-object"></iconify-icon>
             <span class="panel-content">JSON</span>
           </button>
+          <button
+            class="btn"
+            id="exportNetlistBtn"
+            title="Export the named netlist and bill of materials"
+          >
+            <iconify-icon icon="material-symbols:account-tree-outline"></iconify-icon>
+            <span class="panel-content">Netlist</span>
+          </button>
           <div
             class="btn gx-pro-locked"
             style="position: relative"
@@ -901,54 +910,36 @@
               data-pro-feature="ipc-schema-to-tafne"
             ></div>
           </div>
-          <div
-            class="btn gx-pro-locked"
-            style="position: relative"
-            title="Batch export (Pro)"
+          <button
+            class="btn"
+            id="batchExportBtn"
+            title="Export every loaded artboard as SVG"
           >
             <iconify-icon
               icon="material-symbols:download-for-offline-outline"
             ></iconify-icon>
-            <span class="panel-content"
-              >Batch <span class="gx-pro-badge">PRO</span></span
-            >
-            <div
-              class="gx-pro-interceptor"
-              data-pro-feature="schema-batch-export"
-            ></div>
-          </div>
-          <div
-            class="btn export-domain-btn gx-pro-locked"
+            <span class="panel-content">Batch</span>
+          </button>
+          <button
+            class="btn export-domain-btn"
             data-mode="software"
-            style="position: relative"
-            title="Export ERD as SQL DDL (Pro)"
+            id="exportSqlBtn"
+            title="Export ERD as SQL DDL"
           >
             <iconify-icon
               icon="material-symbols:database-outline"
             ></iconify-icon>
-            <span class="panel-content"
-              >SQL <span class="gx-pro-badge">PRO</span></span
-            >
-            <div
-              class="gx-pro-interceptor"
-              data-pro-feature="schema-export-sql"
-            ></div>
-          </div>
-          <div
-            class="btn export-domain-btn gx-pro-locked"
+            <span class="panel-content">SQL</span>
+          </button>
+          <button
+            class="btn export-domain-btn"
             data-mode="software"
-            style="position: relative"
-            title="Export Sequence as Mermaid (Pro)"
+            id="exportMermaidSeqBtn"
+            title="Export Sequence diagram as Mermaid"
           >
             <iconify-icon icon="material-symbols:swap-horiz"></iconify-icon>
-            <span class="panel-content"
-              >Mermaid <span class="gx-pro-badge">PRO</span></span
-            >
-            <div
-              class="gx-pro-interceptor"
-              data-pro-feature="schema-export-mermaid"
-            ></div>
-          </div>
+            <span class="panel-content">Mermaid Seq</span>
+          </button>
           <button
             class="btn export-domain-btn"
             data-mode="software"
@@ -1529,6 +1520,7 @@
 
     <!-- Geometry Engine (4-phase pipeline — after canvas, before features) -->
     <script src="src/js/core/geometryEngine.js"></script>
+    <script src="src/js/core/schematicSemantics.js"></script>
 
     <!-- Domain Kits -->
     <script src="/assets/schema-editor/domains/domainManager.js"></script>
@@ -1669,7 +1661,13 @@
         // Fit initial placeholder to view
         setTimeout(() => window.editor.fitToView(), 100);
 
-        // sendToTafneBtn, batchExportBtn, exportSqlBtn, exportMermaidSeqBtn are now Pro-gated — handled by delegated interceptor below
+        // Batch / SQL / Mermaid-Sequence were Pro-gated as <div> overlays, which
+        // meant three finished exporters shipped with no caller: exportAsSqlDdl
+        // and exportAsMermaidSequence were dead code reachable from nowhere.
+        // sendToTafneBtn stays gated — it is the one of the four with no
+        // implementation behind it.
+        $("#exportSqlBtn").on("click", () => window.editor.exportAsSqlDdl());
+        $("#exportMermaidSeqBtn").on("click", () => window.editor.exportAsMermaidSequence());
         $("#exportFsmJsonBtn").on("click", () =>
           window.editor.exportAsFsmJson(),
         );
@@ -1687,11 +1685,17 @@
         if (window.GxGate) {
           GxGate.init({
             toolKey: "schema_export_count",
-            repo: "carnworkstudios/schema-editor",
+            tip: {
+              text: "This schematic can flow straight into TAFNE for verification — with full provenance, no re-export.",
+              cta: "Send to TAFNE →",
+              featureSlug: "cross-tool-send",
+              subtitle: "Send schematic data to TAFNE for verification, or PDF regions in — with lineage intact. Cross-tool flow is a Pro feature.",
+            },
             triggerIds: [
               "exportViewBtn",
               "exportHtmlBtn",
               "exportJsonBtn",
+              "exportNetlistBtn",
               "exportFsmJsonBtn",
               "exportXStateBtn",
               "sendFsmToTafneBtn",

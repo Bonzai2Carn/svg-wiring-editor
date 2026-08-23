@@ -232,11 +232,30 @@ Object.assign(MobileSVGEditor.prototype, {
 
         const svgEl = this.$svgDisplay[0];
 
-        // Bail early on very large SVGs — synchronous analysis would freeze the browser.
-        // Layers will still populate via the flat DOM-walk fallback (no topology).
-        const elementCount = svgEl.querySelectorAll('*').length;
-        if (elementCount > 1200) {
-            console.warn(`[GeoEngine] Skipped pipeline: ${elementCount} elements exceeds safe limit.`);
+        // ── Size guard ────────────────────────────────────────────────────────
+        // This used to bail above 1200 elements, on the theory that synchronous
+        // analysis would freeze the browser. Measured on a real Arduino MEGA2560
+        // sheet (7848 elements) the whole pipeline runs in ~380ms, so the guard
+        // was trading the entire feature for a third of a second — and every
+        // real schematic exceeds 1200 on import, which meant the analysis
+        // effectively never ran on real data.
+        //
+        // Two changes. Decoration does not count toward the limit: a traced logo
+        // can be 6000 elements of a 7800-element sheet, and refusing to analyse
+        // a circuit because of a bitmap in the title block is the wrong answer.
+        // And when the limit IS hit, say so where a person will see it, rather
+        // than logging to a console nobody has open and returning silently.
+        const ANALYSIS_ELEMENT_LIMIT = 20000;
+        const allEls = svgEl.querySelectorAll('*').length;
+        const decorEls = svgEl.querySelectorAll('[data-geo-class="ink"], [data-geo-class="ink"] *').length;
+        const elementCount = allEls - decorEls;
+        if (elementCount > ANALYSIS_ELEMENT_LIMIT) {
+            console.warn(`[GeoEngine] Skipped pipeline: ${elementCount} analysable elements ` +
+                `exceeds the ${ANALYSIS_ELEMENT_LIMIT} limit.`);
+            this.showToast?.(
+                `Too complex to analyse: ${elementCount.toLocaleString()} elements ` +
+                `(limit ${ANALYSIS_ELEMENT_LIMIT.toLocaleString()}). ` +
+                `Drawing loaded, but wires and components were not detected.`, 'warning');
             const d = this.displays[this.activeDisplayIdx];
             if (d) { d.analyzed = true; d.svgContent = new XMLSerializer().serializeToString(svgEl); }
             if (typeof this.buildLayersTree === 'function' && this.$sidePanel?.hasClass('open'))
@@ -282,6 +301,12 @@ Object.assign(MobileSVGEditor.prototype, {
         const totalNodes = this.wires.length + this.components.length;
         if (totalNodes > 500) this._buildQuadTree();
 
+        // ── Phase 5: semantics ────────────────────────────────
+        // Topology says what touches what. This says what it is called, which
+        // is the difference between a picture of a circuit and a netlist.
+        try { this._buildSchematicSemantics?.(); }
+        catch (e) { console.warn('[GeoEngine] semantics failed:', e); this.netlist = null; }
+
         // ── Mark display as analyzed ──────────────────────────
         const d = this.displays[this.activeDisplayIdx];
         if (d) {
@@ -292,7 +317,10 @@ Object.assign(MobileSVGEditor.prototype, {
         console.log(
             `[GeoEngine] wires=${this.wires.length} comps=${this.components.length}` +
             ` junctions=${[...this.graph.nodes.values()].filter(n=>n.kind==='junction').length}` +
-            ` eps=${EPS} quadTree=${!!this._quadTree}`
+            ` eps=${EPS} quadTree=${!!this._quadTree}` +
+            (this.netlist
+                ? ` | netlist: ${this.netlist.components.length} parts, ${this.netlist.nets.length} named nets`
+                : '')
         );
 
         // Lint pass: mark unconnected pins before rebuilding the layers panel
@@ -432,6 +460,9 @@ Object.assign(MobileSVGEditor.prototype, {
             if (path.classList.contains('wire-group') ||
                 path.classList.contains('draw-preview')) continue;
             if (path.closest('#_gridLayer, #_gridDefs, #_canvasBg, [data-se-system="true"], .snap-guide, .draw-preview, .selection-handle-group')) continue;
+            // Decoration is never split: nothing downstream reads its topology,
+            // and a traced logo is thousands of subpaths nobody will address.
+            if (path.closest('[data-gx-artwork="true"]')) continue;
             const d = path.getAttribute('d') || '';
             const cmds = PathData.parse(d);
             const subs = PathData.splitSubpaths(cmds);
@@ -689,6 +720,12 @@ Object.assign(MobileSVGEditor.prototype, {
         const assigned  = new Uint8Array(rawEndpoints.length);
         let canonIdx = 0;
 
+        // Each endpoint carries its own index. This used to call
+        // rawEndpoints.indexOf(n) for every neighbour of every point, an O(n)
+        // scan nested two deep, so snapping was quadratic in the endpoint count
+        // — which is what made a real drawing look like it needed a size limit.
+        rawEndpoints.forEach((ep, i) => { ep._i = i; });
+
         rawEndpoints.forEach((ep, i) => {
             if (assigned[i]) return;
             const neighbors = kdt.rangeQuery(ep.x, ep.y, eps);
@@ -698,7 +735,7 @@ Object.assign(MobileSVGEditor.prototype, {
             cx /= neighbors.length; cy /= neighbors.length;
             // Mark all neighbors with this canonical coord
             neighbors.forEach(n => {
-                const ni = rawEndpoints.indexOf(n);
+                const ni = n._i;
                 if (ni >= 0 && !assigned[ni]) {
                     canonical[ni * 2]     = cx;
                     canonical[ni * 2 + 1] = cy;
