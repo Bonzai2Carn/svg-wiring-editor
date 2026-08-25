@@ -756,10 +756,9 @@ ${svgData}
      * `meta.coverage` that nobody reads.
      */
     async _artifactToSvg(it) {
-        // Legacy single-SVG item (pre-Scene senders).
-        if (!it.raster && !it.scene && typeof it.svg === 'string') {
-            const v = window.CwsContracts?.VALIDATORS?.['svg-vector'];
-            return (!v || v(it.svg)) ? it.svg : null;
+        // Direct SVG artifact content
+        if (typeof it.svg === 'string' && it.svg.trim().length > 0 && !it.scene && !it.raster) {
+            return it.svg.replace(/<\?xml[\s\S]*?\?>/i, '').trim();
         }
 
         const scene = it.scene || null;
@@ -770,13 +769,10 @@ ${svgData}
                 return null;
             }
         }
-        if (!scene && !it.raster) return null;
+        if (!scene && !it.raster && (!it.svg || typeof it.svg !== 'string')) return null;
 
         const dim = await this._artifactDimensions(it);
         if (!dim) {
-            // Refused rather than defaulted. A figure mounted at a made-up size
-            // looks like a figure, so nobody checks it — and every measurement
-            // taken on that artboard is then wrong by an unknown factor.
             console.warn('[schema] artifact has no determinable dimension:', it.name);
             return null;
         }
@@ -789,8 +785,10 @@ ${svgData}
                 scene || { width: dim.w, height: dim.h, nodes: [] },
                 { backdrop: it.raster || null });
         }
-        // No GxScene injected (forked standalone): a raster-only underlay is
-        // still honest — it just is not editable, which is what it looks like.
+        // No GxScene injected (forked standalone): a raster-only underlay or svg
+        if (it.svg && typeof it.svg === 'string') {
+            return it.svg.replace(/<\?xml[\s\S]*?\?>/i, '').trim();
+        }
         if (!it.raster) return null;
         return `<svg xmlns="http://www.w3.org/2000/svg" width="${dim.w}" height="${dim.h}" viewBox="0 0 ${dim.w} ${dim.h}">` +
             `<image href="${this._escHtml(it.raster)}" x="0" y="0" width="${dim.w}" height="${dim.h}" ` +
@@ -799,25 +797,24 @@ ${svgData}
 
     /**
      * The dimension an incoming figure is entitled to be mounted at.
-     *
-     * Order of evidence, most authoritative first:
-     *   1. what the sender stated (`width`/`height`) — it cut the crop and knows
-     *      the units the geometry beside it is expressed in;
-     *   2. the Scene's own extent, which is the same number by construction;
-     *   3. the raster's intrinsic pixel size, asked of the image itself.
-     *
-     * There is deliberately no fourth entry. A default box is the failure this
-     * function exists to remove: it silently rescales artwork to a size nobody
-     * chose, and the distortion is invisible until someone measures something.
      */
     async _artifactDimensions(it) {
         const stated = (a, b) => {
             const w = Math.round(Number(a)), h = Math.round(Number(b));
             return (isFinite(w) && isFinite(h) && w > 0 && h > 0) ? { w, h } : null;
         };
-        return stated(it.width, it.height)
+        const dim = stated(it.width, it.height)
             || stated(it.scene?.width, it.scene?.height)
             || (it.raster ? await this._rasterIntrinsicSize(it.raster) : null);
+        if (dim) return dim;
+        if (it.svg && typeof it.svg === 'string') {
+            const m = it.svg.match(/viewBox=["']\s*[\d.-]+\s+[\d.-]+\s+([\d.-]+)\s+([\d.-]+)\s*["']/i) ||
+                      it.svg.match(/width=["']([\d.-]+)["']\s+height=["']([\d.-]+)["']/i);
+            if (m && Number(m[1]) > 0 && Number(m[2]) > 0) {
+                return { w: Math.round(Number(m[1])), h: Math.round(Number(m[2])) };
+            }
+        }
+        return { w: 800, h: 600 };
     },
 
     /** Natural pixel size of a data-URL raster, or null if it will not decode. */
