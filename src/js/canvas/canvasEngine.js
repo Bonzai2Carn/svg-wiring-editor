@@ -268,11 +268,22 @@ Object.assign(MobileSVGEditor.prototype, {
 
         if (!this._selection?.length) return;
 
-        // Project all element tight-bbox corners directly to screen space.
+        // Route-like tools keep node selection even in a mixed/multi selection.
+        // A single giant bbox across several wires hides which routes were hit
+        // and puts resize handles over unrelated canvas content.
+        const nodeBased = this._selection.filter(el => this._usesNodeSelection(el));
+        const boxBased = this._selection.filter(el => !this._usesNodeSelection(el));
+        nodeBased.forEach((el, i) => this._drawWireEndpointHandles(ctx, el, {
+            compact: this._selection.length > 1,
+            prefix: `multi_${i}_`,
+        }));
+        if (!boxBased.length) return;
+
+        // Project all ordinary element tight-bbox corners directly to screen space.
         // This avoids the axis-alignment error that bloated boxes at non-zero
         // camera rotation: the world-space AABB was correct but its corners, when
         // projected, produce a rotated rhombus — not the element's true screen envelope.
-        const screenCorners = this._getSelectionScreenCorners();
+        const screenCorners = this._getSelectionScreenCorners(boxBased);
         if (!screenCorners || !screenCorners.length) return;
 
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -280,19 +291,6 @@ Object.assign(MobileSVGEditor.prototype, {
             minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
             maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
         });
-
-        // Single wire selected → show endpoint handles instead of bounding box.
-        // The bounding box is meaningless for a 1px-wide line and its resize
-        // handles apply scale() which makes stroke-width grow even with non-scaling-stroke.
-        // Wires and measurements are both editable polylines, so both get node
-        // handles instead of a bounding box. A box around a 1px line is
-        // meaningless, and its scale handles would distort the geometry.
-        if (this._selection.length === 1 &&
-            (this._isWireElement(this._selection[0]) ||
-             this._isMeasureAnnotation?.(this._selection[0]))) {
-            this._drawWireEndpointHandles(ctx, this._selection[0]);
-            return;
-        }
 
         const pad = 4;
         const tl = { x: minX - pad, y: minY - pad };
@@ -366,6 +364,16 @@ Object.assign(MobileSVGEditor.prototype, {
         return fill === 'none' && d.length > 0 && /^[MLml\s\d.eE+\-,]+$/.test(d.trim());
     },
 
+    _usesNodeSelection(el) {
+        return !!el && (this._isWireElement(el) ||
+            this._isMeasureAnnotation?.(el));
+    },
+
+    _nodeSelectionPointsDoc(el) {
+        if (this._isMeasureAnnotation?.(el)) return this._measureAnnPointsDoc(el) || [];
+        return this._wirePointsDoc(el) || [];
+    },
+
     // ── Parse ALL points of a wire element (M + all L coords) ──
     _parseWirePoints(el) {
         if (!el) return null;
@@ -396,14 +404,12 @@ Object.assign(MobileSVGEditor.prototype, {
     // Traces the actual M/L path (not a straight hypotenuse shortcut).
     // Endpoint handles (ep0, ep_last) at the termini — larger circles.
     // Breakpoint handles (bp_1, bp_2 …) at each intermediate bend — smaller.
-    _drawWireEndpointHandles(ctx, el) {
+    _drawWireEndpointHandles(ctx, el, opts = {}) {
         // Document-local, NOT the raw `d` values — see _elToDoc. A measurement
         // stores its vertices as data rather than in a `d`, so it has its own
         // accessor; everything downstream is identical.
-        const pts = this._isMeasureAnnotation?.(el)
-            ? this._measureAnnPointsDoc(el)
-            : this._wirePointsDoc(el);
-        if (!pts) return;
+        const pts = this._nodeSelectionPointsDoc(el);
+        if (!pts || pts.length < 2) return;
 
         // Project every wire point to screen space
         const sPts = pts.map(p => this._worldToOverlayScreen(p.x, p.y));
@@ -426,7 +432,11 @@ Object.assign(MobileSVGEditor.prototype, {
             ctx.arc(pos.x, pos.y, R, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
-            this._overlayHandleZones.push({ type: 'circle', id, cx: pos.x, cy: pos.y, r: R + 4 });
+            // Multi-route nodes are selection evidence, not ambiguous edit
+            // handles. Direct node editing resumes when one route is selected.
+            if (!opts.compact) this._overlayHandleZones.push({
+                type: 'circle', id: `${opts.prefix || ''}${id}`, cx: pos.x, cy: pos.y, r: R + 4
+            });
         };
 
         // Breakpoint handles at intermediate bend points (drawn first, sit behind endpoints)
@@ -434,15 +444,15 @@ Object.assign(MobileSVGEditor.prototype, {
         ctx.strokeStyle = 'rgba(79,172,254,0.7)';
         ctx.lineWidth   = 1.5;
         for (let i = 1; i < sPts.length - 1; i++) {
-            circle(sPts[i], `bp_${i}`, 4);
+            circle(sPts[i], `bp_${i}`, opts.compact ? 2.5 : 4);
         }
 
         // Endpoint handles at termini (drawn on top)
         ctx.fillStyle   = '#0f172a';
         ctx.strokeStyle = '#4facfe';
         ctx.lineWidth   = 2;
-        circle(sPts[0], 'ep0', 6);
-        circle(sPts[sPts.length - 1], 'ep_last', 6);
+        circle(sPts[0], 'ep0', opts.compact ? 4 : 6);
+        circle(sPts[sPts.length - 1], 'ep_last', opts.compact ? 4 : 6);
 
         ctx.restore();
     },
@@ -476,8 +486,8 @@ Object.assign(MobileSVGEditor.prototype, {
     // ── Tight bbox corners projected directly to overlay screen space ──
     //   Replaces the old world-AABB→4-corner approach, which bloated the
     //   selection box for element-rotated shapes and camera-rotated views.
-    _getSelectionScreenCorners() {
-        if (!this._selection.length) return null;
+    _getSelectionScreenCorners(elements = this._selection) {
+        if (!elements.length) return null;
         const svg = this.$svgDisplay[0];
         const canvasRect = this._overlayCanvas.getBoundingClientRect();
         const rotGrp = svg.querySelector('#_cameraRotGroup');
@@ -487,7 +497,7 @@ Object.assign(MobileSVGEditor.prototype, {
         if (!ctm) return null;
 
         const pts = [];
-        this._selection.forEach(el => {
+        elements.forEach(el => {
             const bb = this._tightBBox(el);
             if (!bb) return;
 
@@ -521,14 +531,16 @@ Object.assign(MobileSVGEditor.prototype, {
 
     _drawOverlayRect(ctx, pts) {
         ctx.save();
-        ctx.strokeStyle = '#4facfe';
-        ctx.lineWidth = 1.5;
-        ctx.setLineDash([5, 4]);
+        // Quiet selection surface: no dashed perimeter competing with the
+        // artwork. A rounded translucent field plus handles communicates the
+        // editable extent without drawing another diagram line over the page.
+        const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+        const x = Math.min(...xs), y = Math.min(...ys);
+        const w = Math.max(...xs) - x, h = Math.max(...ys) - y;
+        ctx.fillStyle = 'rgba(79, 172, 254, 0.055)';
         ctx.beginPath();
-        ctx.moveTo(pts[0].x, pts[0].y);
-        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-        ctx.closePath();
-        ctx.stroke();
+        ctx.roundRect(x, y, w, h, Math.min(10, w / 2, h / 2));
+        ctx.fill();
         ctx.restore();
     },
 
@@ -542,14 +554,16 @@ Object.assign(MobileSVGEditor.prototype, {
             { id: 'e', ...midR }, { id: 'se', ...br }, { id: 's', ...midB },
             { id: 'sw', ...bl }, { id: 'w', ...midL },
         ];
-        const SZ = 10;
+        const SZ = 8;
         ctx.save();
         ctx.fillStyle = '#1a1a2e';
         ctx.strokeStyle = '#4facfe';
         ctx.lineWidth = 1.5;
         zones.forEach(z => {
-            ctx.fillRect(z.x - SZ / 2, z.y - SZ / 2, SZ, SZ);
-            ctx.strokeRect(z.x - SZ / 2, z.y - SZ / 2, SZ, SZ);
+            ctx.beginPath();
+            ctx.roundRect(z.x - SZ / 2, z.y - SZ / 2, SZ, SZ, 3);
+            ctx.fill();
+            ctx.stroke();
             this._overlayHandleZones.push({ type: 'rect', id: z.id, cx: z.x, cy: z.y, size: SZ });
         });
         ctx.restore();
@@ -574,7 +588,7 @@ Object.assign(MobileSVGEditor.prototype, {
         ctx.stroke();
         ctx.fillStyle = '#1a1a2e';
         ctx.beginPath();
-        ctx.arc(hx, hy, 6, 0, Math.PI * 2);
+        ctx.arc(hx, hy, 5, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
         ctx.restore();
@@ -677,8 +691,10 @@ Object.assign(MobileSVGEditor.prototype, {
                 let delta = Math.atan2(svgNow.y - cy, svgNow.x - cx) * 180 / Math.PI - startAngle;
                 // Normalize to [-180,180] to avoid jumps at the ±180 boundary
                 delta -= 360 * Math.round(delta / 360);
-                const snapped = Math.round(delta / 15) * 15;
-                this._applyRotation(startTransforms, cx, cy, snapped);
+                // Continuous by default. Shift restores deliberate 15° steps
+                // for exact orthogonal/isometric placement.
+                const angle = ev.shiftKey ? Math.round(delta / 15) * 15 : delta;
+                this._applyRotation(startTransforms, cx, cy, angle);
             } else {
                 this._applyResize(startTransforms, startBB, type, dx, dy, ev.shiftKey);
             }
@@ -1927,7 +1943,7 @@ Object.assign(MobileSVGEditor.prototype, {
     _updateMarqueeCandidates() {
         if (!this._marqueeState) return;
         const box = this._marqueeBounds();
-        const next = new Set(box ? this._collectMarqueeHits(box) : []);
+        const next = new Set(box ? this._expandMarqueeGraphHits(this._collectMarqueeHits(box)) : []);
         const prev = this._marqueeCandidates || new Set();
 
         prev.forEach(el => { if (!next.has(el)) el.classList.remove('se-marquee-candidate'); });
@@ -1974,12 +1990,40 @@ Object.assign(MobileSVGEditor.prototype, {
         ctx.restore();
     },
 
+    _routeTouchesMarquee(points, { x1, y1, x2, y2 }) {
+        const inside = p => p.x >= x1 && p.x <= x2 && p.y >= y1 && p.y <= y2;
+        if (points.some(inside)) return true;
+        // A narrow marquee may cross a long segment without enclosing a node.
+        // Test each segment against the four box edges so route selection still
+        // feels natural while avoiding the old whole-AABB false positives.
+        const orient = (a, b, c) => (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+        const onSegment = (a, b, p) => Math.abs(orient(a, b, p)) < 1e-7 &&
+            p.x >= Math.min(a.x, b.x) && p.x <= Math.max(a.x, b.x) &&
+            p.y >= Math.min(a.y, b.y) && p.y <= Math.max(a.y, b.y);
+        const crosses = (a, b, c, d) => {
+            const o1 = orient(a, b, c), o2 = orient(a, b, d);
+            const o3 = orient(c, d, a), o4 = orient(c, d, b);
+            if (Math.sign(o1) !== Math.sign(o2) && Math.sign(o3) !== Math.sign(o4)) return true;
+            return onSegment(a, b, c) || onSegment(a, b, d) ||
+                   onSegment(c, d, a) || onSegment(c, d, b);
+        };
+        const edges = [
+            [{x:x1,y:y1},{x:x2,y:y1}], [{x:x2,y:y1},{x:x2,y:y2}],
+            [{x:x2,y:y2},{x:x1,y:y2}], [{x:x1,y:y2},{x:x1,y:y1}],
+        ];
+        for (let i = 1; i < points.length; i++) {
+            if (edges.some(([a, b]) => crosses(points[i - 1], points[i], a, b))) return true;
+        }
+        return false;
+    },
+
     // Every element the world-space box {x1,y1,x2,y2} would capture.
     // Single source of truth for both the live preview and the commit, so what
     // lights up during the drag is exactly what ends up selected.
     _collectMarqueeHits({ x1, y1, x2, y2 }) {
         const svg = this.$svgDisplay[0];
         const seen = new Set();
+        const testedNodeTargets = new Set();
         const hits = [];
 
         // Mirror selectAll()'s exclusion list — the proven filter for this SVG structure.
@@ -1997,6 +2041,22 @@ Object.assign(MobileSVGEditor.prototype, {
             // Wire visuals live inside .wire-group wrappers; select the visual path,
             // never the wrapper group (it has no id and confuses group-move logic).
             if (el.classList.contains('wire-group') || el.classList.contains('component-group')) return;
+
+            // Resolve the semantic editing unit before geometry testing. Pen,
+            // wire and measure are node/path tools: test their route, not the
+            // often enormous empty rectangle inside their bounding box.
+            const target = el.closest('g[id^="group_"]') || el.closest('.domain-symbol') ||
+                           el.closest('.measure-annotation') || el;
+            if (this._usesNodeSelection(target)) {
+                if (testedNodeTargets.has(target)) return;
+                testedNodeTargets.add(target);
+                const points = this._nodeSelectionPointsDoc(target);
+                if (points.length >= 2 && this._routeTouchesMarquee(points, { x1, y1, x2, y2 })) {
+                    seen.add(target);
+                    hits.push(target);
+                }
+                return;
+            }
 
             const bb = this._tightBBox(el);
             if (!bb || (bb.width === 0 && bb.height === 0)) return;
@@ -2026,8 +2086,6 @@ Object.assign(MobileSVGEditor.prototype, {
             if (elMaxX < x1 || elMinX > x2 || elMaxY < y1 || elMinY > y2) return;
 
             // Prefer the top-level domain-symbol or user group over inner shapes
-            const target = el.closest('g[id^="group_"]') || el.closest('.domain-symbol') ||
-                           el.closest('.measure-annotation') || el;
             if (!seen.has(target)) {
                 seen.add(target);
                 hits.push(target);
@@ -2037,13 +2095,41 @@ Object.assign(MobileSVGEditor.prototype, {
         return hits;
     },
 
+    // A marquee over wiring identifies seed edges; topology decides the final
+    // selection. This is the diagram-editor distinction between selecting SVG
+    // paint and selecting a connected graph. Components are boundaries, so a
+    // net expands through junctions and wire segments but not through a device.
+    _expandMarqueeGraphHits(seedHits) {
+        const out = new Set();
+        const wires = this.wires || [];
+        const byId = new Map(wires.map(w => [w.id, w]));
+
+        seedHits.forEach(el => {
+            if (!this._isWireElement(el) || el.getAttribute?.('data-ink') === 'true') {
+                out.add(el); // measurements, pen and ordinary objects stay local
+                return;
+            }
+            const seed = wires.find(w => w.element === el || w.el === el || w.$hitbox?.[0] === el);
+            if (!seed?.net?.wireIds?.length) {
+                out.add(el); // pipeline not run yet: preserve the directly hit SVG node
+                return;
+            }
+            seed.net.wireIds.forEach(id => {
+                const wire = byId.get(id);
+                const visual = wire?.element || wire?.el || wire?.$element?.[0];
+                if (visual?.isConnected) out.add(visual);
+            });
+        });
+        return [...out];
+    },
+
     _commitMarquee() {
         const box = this._marqueeBounds();
 
         // Treat tiny drags as plain click on empty canvas (deselect all)
         if (!box) { this.deselectAll(); return; }
 
-        const hits = this._collectMarqueeHits(box);
+        const hits = this._expandMarqueeGraphHits(this._collectMarqueeHits(box));
         this.deselectAll();
         hits.forEach(el => this.selectEl(el, true));
         if (hits.length) this.showToast(`${hits.length} element${hits.length > 1 ? 's' : ''} selected`, 'success');
@@ -2078,6 +2164,8 @@ Object.assign(MobileSVGEditor.prototype, {
         // (single click selects the whole group; Figma/draw.io convention)
         this.$svgDisplay.on('dblclick.canvas', (e) => {
             if (this.activeTool !== 'select') return;
+            // Text owns double-click. Do not enter its parent group first.
+            if (e.target.tagName?.toLowerCase() === 'text' || e.target.closest?.('text')) return;
             const sym = e.target.closest?.('.domain-symbol, g[id^="group_"]');
             if (!sym || e.target === sym) return;
             if (e.target.classList.contains('component-hitbox')) return;
@@ -2289,12 +2377,23 @@ Object.assign(MobileSVGEditor.prototype, {
                 }
             }
 
-            if (!textEl) return;
-            if (!textEl.closest('.domain-symbol')) return;
-            
-            e.preventDefault();
-            e.stopPropagation();
-            this._editSymbolText(textEl);
+            if (textEl) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (textEl.closest('.domain-symbol')) this._editSymbolText(textEl);
+                else this._startInlineTextEdit?.(textEl, { before: this._captureFullState?.() });
+                return;
+            }
+
+            // Excalidraw convention: double-click empty canvas creates text at
+            // the pointer without requiring a trip to the Text tool.
+            const isCanvas = e.target === this.$svgDisplay[0] ||
+                e.target === this._contentRoot || e.target.dataset?.seSystem === 'true';
+            if (isCanvas) {
+                e.preventDefault();
+                e.stopPropagation();
+                this._textPlace?.(this.screenToSVG(e.clientX, e.clientY));
+            }
         });
 
         // Arrow key nudge — the keyboard equivalent of a move, so both object tools

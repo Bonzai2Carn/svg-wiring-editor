@@ -293,7 +293,7 @@
             <option value="construction">🏗 Construction</option>
           </select>
 
-          <div class="control-group-flex" style="margin-left: auto; width: 50%">
+          <div class="control-group-flex" style="margin-left: auto; width: 50%; overflow: auto;">
             <!-- Undo / Redo -->
             <button class="btn" id="undoBtn" title="Undo (⌃/⌘+Z)" disabled>
               <iconify-icon icon="material-symbols:undo"></iconify-icon>
@@ -309,14 +309,6 @@
               <span class="panel-content">Redo</span>
             </button>
 
-            <!-- New Canvas -->
-            <button class="btn" id="newCanvasBtn" title="New blank canvas">
-              <iconify-icon
-                icon="material-symbols:add-box-outline"
-              ></iconify-icon>
-              <span class="panel-content">New</span>
-            </button>
-
             <!-- Load -->
             <button
               class="btn"
@@ -327,6 +319,14 @@
                 icon="material-symbols:folder-open-outline"
               ></iconify-icon>
               <span class="panel-content">Load</span>
+            </button>
+
+            <!-- New Canvas -->
+            <button class="btn" id="newCanvasBtn" title="New blank canvas">
+              <iconify-icon
+                icon="material-symbols:add-box-outline"
+              ></iconify-icon>
+              <span class="panel-content">New</span>
             </button>
 
             <!-- Toolbar toggle -->
@@ -1521,6 +1521,7 @@
     <script src="src/js/canvas/clipboard.js"></script>
     <script src="src/js/canvas/alignDistribute.js"></script>
     <script src="src/js/canvas/propertyPanel.js"></script>
+    <script src="src/js/canvas/contextualToolbar.js"></script>
 
     <!-- Geometry Engine (4-phase pipeline — after canvas, before features) -->
     <script src="src/js/core/geometryEngine.js"></script>

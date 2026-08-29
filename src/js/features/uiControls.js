@@ -729,6 +729,7 @@ ${svgData}
                 origin: it.origin || null,
                 // Kept so a later send-back knows what arrived vs what was drawn.
                 sourceScene: it.scene || null,
+                sourceSceneMaterialized: false,
             });
         });
         this.switchDisplay(firstNewIdx);
@@ -736,24 +737,23 @@ ${svgData}
         const vec = built.filter(b => b.it.scene?.nodes?.length).length;
         this.showToast(
             `${built.length} artboard${built.length !== 1 ? 's' : ''} added` +
-            (vec ? ` · ${vec} with editable geometry` : ' · reference only') +
+            (vec ? ` · ${vec} with vector metadata` : ' · bitmap only') +
             (rejected ? ` (${rejected} skipped)` : ''),
             'success');
     },
 
     /**
-     * Compose one artifact into a single SVG document: the rasterised crop as a
-     * locked backdrop, the Scene's geometry as real, editable elements on top.
+     * Compose one artifact into a bitmap-only SVG document. The Scene remains
+     * on the display as `sourceScene` metadata, but is not painted on import.
      *
      * The backdrop is deliberately inert — `data-se-system` keeps it out of the
      * artifacts index, `pointer-events:none` keeps it from swallowing clicks
      * meant for the geometry, and it is never analyzed (the geometry engine has
      * no reader for <image> and would drop it anyway).
      *
-     * Keeping both layers is the point: the vectors are what you can edit, the
-     * raster is what the page actually looked like. Anything the segment pass
-     * missed shows up as a visible gap between them rather than as a number in
-     * `meta.coverage` that nobody reads.
+     * This prevents operator fragments from appearing as duplicate artwork or
+     * being mistaken for separately extracted images. A future explicit action
+     * may materialize the metadata for editing; passive transfer never does.
      */
     async _artifactToSvg(it) {
         // Direct SVG artifact content
@@ -777,22 +777,19 @@ ${svgData}
             return null;
         }
 
-        // One renderer, shared with the PDF tool via GxScene.toSvg — mounting a
-        // Scene here and embedding the same Scene there must produce identical
-        // pixels, or every approved round trip would visibly redraw the figure.
-        if (window.GxScene) {
-            return window.GxScene.toSvg(
-                scene || { width: dim.w, height: dim.h, nodes: [] },
-                { backdrop: it.raster || null });
+        // The bitmap is the only exposed layer. Scene validation above protects
+        // the metadata contract without materializing its nodes into the SVG.
+        if (it.raster) {
+            return `<svg xmlns="http://www.w3.org/2000/svg" width="${dim.w}" height="${dim.h}" viewBox="0 0 ${dim.w} ${dim.h}">` +
+                `<image href="${this._escHtml(it.raster)}" x="0" y="0" width="${dim.w}" height="${dim.h}" ` +
+                `data-gx-underlay="true" data-se-system="true" style="pointer-events:none" preserveAspectRatio="xMidYMid meet" /></svg>`;
         }
-        // No GxScene injected (forked standalone): a raster-only underlay or svg
+        // No bitmap: retain the legacy direct-SVG fallback only for artifacts
+        // that were explicitly sent as SVG rather than inferred PDF geometry.
         if (it.svg && typeof it.svg === 'string') {
             return it.svg.replace(/<\?xml[\s\S]*?\?>/i, '').trim();
         }
-        if (!it.raster) return null;
-        return `<svg xmlns="http://www.w3.org/2000/svg" width="${dim.w}" height="${dim.h}" viewBox="0 0 ${dim.w} ${dim.h}">` +
-            `<image href="${this._escHtml(it.raster)}" x="0" y="0" width="${dim.w}" height="${dim.h}" ` +
-            `data-gx-underlay="true" data-se-system="true" style="pointer-events:none" preserveAspectRatio="xMidYMid meet" /></svg>`;
+        return null;
     },
 
     /**
@@ -935,6 +932,10 @@ ${svgData}
         if (!d) { this.showToast('No active artboard', 'error'); return; }
         if (!d.origin || d.origin.page == null || d.origin.regionId == null) {
             this.showToast('This artboard has no source region to send back to', 'error');
+            return;
+        }
+        if (d.sourceScene && !d.sourceSceneMaterialized) {
+            this.showToast('Vector metadata is not exposed for editing on this bitmap artboard', 'info');
             return;
         }
         if (!window.CwsBridge?.isEmbedded || !window.CwsContracts || !window.GxScene) {

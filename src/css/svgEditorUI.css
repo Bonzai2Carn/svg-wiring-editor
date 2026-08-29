@@ -391,7 +391,7 @@ body {
 
 .control-group-flex {
     display: flex;
-    flex-wrap: wrap;
+    /* flex-wrap: wrap; */
     margin: 4px;
     background: rgba(0, 0, 0, 0.04);
     padding: 5px;
@@ -1886,7 +1886,7 @@ body.dark-mode .btn:disabled {
 
     /* Secondary toolbar wraps on mobile */
     .custom-bar.header-right .header-right {
-        flex-wrap: wrap;
+        /* flex-wrap: wrap; */
         gap: 4px;
     }
 }
@@ -2793,4 +2793,166 @@ body.gx-embedded .gx-mcp-pill-wrap { display: flex; }
 }
 body.dark-mode #canvasFirstRunHint {
     color: rgba(190, 200, 215, 0.45);
+}
+
+/* ============================================================
+   Contextual command rail — tool settings + selection actions
+   ============================================================ */
+.gx-context-rail {
+    position: fixed;
+    left: 50%;
+    bottom: 112px;
+    z-index: 910;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 7px;
+    transform: translateX(-50%);
+    max-width: min(92vw, 980px);
+    color: #172033;
+    font: 600 11px/1.2 'Segoe UI', sans-serif;
+    pointer-events: none;
+}
+.gx-context-tool,
+.gx-selection-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 42px;
+    padding: 6px 8px;
+    border: 1px solid rgba(36, 51, 74, .18);
+    border-radius: 10px;
+    background: rgba(250, 252, 255, .94);
+    box-shadow: 0 10px 32px rgba(22, 35, 58, .16), 0 1px 0 rgba(255,255,255,.9) inset;
+    backdrop-filter: blur(16px) saturate(1.25);
+    pointer-events: auto;
+    white-space: nowrap;
+}
+.gx-selection-actions:empty { display: none; }
+.gx-selection-actions {
+    min-height: 36px;
+    padding: 4px 6px;
+    border-color: rgba(79, 172, 254, .28);
+}
+.gx-rail-identity { display: flex; align-items: center; gap: 7px; padding: 0 6px; }
+.gx-rail-identity strong { font-size: 12px; letter-spacing: .01em; }
+.gx-rail-identity small { color: #758198; font-weight: 500; }
+.gx-rail-identity iconify-icon { color: #168bd2; font-size: 17px; }
+.gx-rail-divider { width: 1px; height: 24px; margin: 0 2px; background: rgba(36, 51, 74, .14); }
+.gx-rail-btn,
+.gx-context-menu button {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+.gx-rail-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-height: 29px;
+    padding: 5px 8px;
+    border-radius: 6px;
+}
+.gx-rail-btn:hover { background: rgba(79, 172, 254, .12); color: #0878bd; }
+.gx-rail-btn.is-active { background: rgba(79, 172, 254, .16); color: #0878bd; }
+.gx-rail-btn:disabled { opacity: .32; cursor: default; }
+.gx-rail-btn iconify-icon { font-size: 16px; }
+.gx-rail-field,
+.gx-rail-color,
+.gx-rail-select { display: flex; align-items: center; gap: 5px; color: #68758a; }
+.gx-rail-field input,
+.gx-rail-select select {
+    height: 28px;
+    border: 1px solid rgba(36, 51, 74, .16);
+    border-radius: 6px;
+    background: #fff;
+    color: #172033;
+    font: 600 11px 'Segoe UI', sans-serif;
+}
+.gx-rail-field input { width: 48px; padding: 0 6px; }
+.gx-rail-select select { max-width: 126px; padding: 0 24px 0 7px; }
+.gx-rail-color input {
+    width: 28px;
+    height: 28px;
+    padding: 2px;
+    border: 1px solid rgba(36, 51, 74, .16);
+    border-radius: 7px;
+    background: #fff;
+    cursor: pointer;
+}
+.gx-selection-count {
+    display: grid;
+    place-items: center;
+    min-width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    background: #168bd2;
+    color: white;
+    font: 700 11px 'DM Mono', monospace;
+}
+.gx-context-menu {
+    position: fixed;
+    z-index: 930;
+    display: grid;
+    min-width: 190px;
+    padding: 5px;
+    border: 1px solid rgba(36, 51, 74, .18);
+    border-radius: 9px;
+    background: rgba(250, 252, 255, .98);
+    box-shadow: 0 14px 38px rgba(22, 35, 58, .22);
+}
+.gx-context-menu button { padding: 8px 10px; border-radius: 5px; text-align: left; }
+.gx-context-menu button:hover { background: rgba(79, 172, 254, .12); color: #0878bd; }
+body.dark-mode .gx-context-rail { color: #e8edf5; }
+body.dark-mode .gx-context-tool,
+body.dark-mode .gx-selection-actions,
+body.dark-mode .gx-context-menu { background: rgba(20, 27, 39, .95); border-color: rgba(255,255,255,.13); box-shadow: 0 14px 38px rgba(0,0,0,.38); }
+body.dark-mode .gx-rail-field input,
+body.dark-mode .gx-rail-select select,
+body.dark-mode .gx-rail-color input { background: #111827; color: #e8edf5; border-color: rgba(255,255,255,.14); }
+body.dark-mode .gx-rail-divider { background: rgba(255,255,255,.13); }
+
+@media (max-width: 760px) {
+    .gx-context-rail { left: 8px; right: 8px; bottom: 86px; max-width: none; transform: none; align-items: stretch; }
+    .gx-context-tool, .gx-selection-actions { overflow-x: auto; justify-content: flex-start; }
+    .gx-rail-btn span, .gx-rail-field > span, .gx-rail-color > span, .gx-rail-select > span { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .gx-context-rail, .gx-context-menu { scroll-behavior: auto; }
+}
+
+.gx-canvas-text-editor {
+    position: fixed;
+    z-index: 940;
+    overflow: hidden;
+    resize: horizontal;
+    padding: 0;
+    border: 0;
+    border-bottom: 1px dashed rgba(22, 139, 210, .62);
+    outline: 0;
+    background: rgba(255, 255, 255, .88);
+    line-height: 1.2;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    box-shadow: 0 4px 18px rgba(22, 35, 58, .1);
+    transform-origin: top left;
+    user-select: text;
+}
+.gx-text-editing { opacity: .2; }
+body.dark-mode .gx-canvas-text-editor {
+    background: rgba(17, 24, 39, .9);
+    border-bottom-color: #4facfe;
+}
+
+/* Marquee candidates are provisional: amber halo while dragging. Committed
+   selections use the blue overlay/node handles, so the two states cannot be
+   mistaken for one another. Filter works on groups as a composited unit and
+   does not rewrite domain-owned stroke/fill attributes. */
+#svgDisplay .se-marquee-candidate {
+    filter: drop-shadow(0 0 2px rgba(245, 158, 11, .95))
+            drop-shadow(0 0 5px rgba(245, 158, 11, .45));
 }

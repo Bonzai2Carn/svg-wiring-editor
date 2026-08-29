@@ -218,6 +218,7 @@ Object.assign(MobileSVGEditor.prototype, {
         const el  = sel[0] || null;
 
         if (!el) { this._clearPropertyPanel(); return; }
+        this._refreshContextualToolbar?.();
 
         this._propPanelTarget = el;
 
@@ -343,6 +344,7 @@ Object.assign(MobileSVGEditor.prototype, {
     _clearPropertyPanel() {
         $('#propertyPanel').hide();
         this._propPanelTarget = null;
+        this._refreshContextualToolbar?.();
     },
 
     // ── Side panel tab switching ──────────────────────────────
@@ -482,7 +484,12 @@ Object.assign(MobileSVGEditor.prototype, {
 
         // Text content
         live('#prop-text-content', function (el) {
-            el.textContent = $(this).val();
+            const value = $(this).val();
+            if (el.tagName?.toLowerCase() === 'text' && self._renderWrappedText) {
+                self._renderWrappedText(el, value, parseFloat(el.getAttribute('data-text-width') || '240'));
+            } else {
+                el.textContent = value;
+            }
         });
 
         // Font size

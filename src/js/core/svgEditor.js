@@ -80,6 +80,7 @@ class MobileSVGEditor {
         this.initClipboard();           // clipboard.js
         this.initAlignDistribute();     // alignDistribute.js
         this.initPropertyPanel();       // propertyPanel.js
+        this.initContextualToolbar();   // contextualToolbar.js
         this.initGeometryEngine();      // geometryEngine.js  (spatial indices)
         this.initLabels();              // labels.js  (analysis provenance view)
         this.initMeasureTool();         // measureTool.js  (measure as a draw tool)

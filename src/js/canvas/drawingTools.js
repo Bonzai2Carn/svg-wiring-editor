@@ -61,58 +61,11 @@ Object.assign(MobileSVGEditor.prototype, {
         if (end   !== 'none') el.setAttribute('marker-end',   `url(#gxw-${end})`);
     },
 
-    // Small floating picker shown only while the wire tool is active
+    // Compatibility hook for the contextual command rail.
     _toggleWireStyleBar(show) {
-        let bar = document.getElementById('gxWireStyleBar');
-        if (!show) { bar?.remove(); return; }
-        if (bar) return;
-        bar = document.createElement('div');
-        bar.id = 'gxWireStyleBar';
-        const labels = { none: '— none', arrow: '→ arrow', triangle: '▶ triangle',
-                         diamond: '◆ diamond', circle: '● circle', many: '⑃ many (crow\'s foot)' };
-        const opts = this._WIRE_END_STYLES.map(s => `<option value="${s}">${labels[s]}</option>`).join('');
-
-        // The bar set the two ENDS of a wire and never its SHAPE, so the one
-        // property a relational diagram actually cares about was unreachable.
-        const R = window.GxEdgeRouter;
-        const routeStyles = R ? R.STYLES : ['direct', 'manhattan'];
-        const routeLabels = R ? R.LABELS : { direct: 'direct', manhattan: 'manhattan' };
-        const routeOpts = routeStyles
-            .map(s => `<option value="${s}">${routeLabels[s] || s}</option>`).join('');
-
-        bar.innerHTML =
-            `<label>Start <select data-endpoint="start">${opts}</select></label>` +
-            `<label>End <select data-endpoint="end">${opts}</select></label>` +
-            `<label>Route <select data-route="1">${routeOpts}</select></label>`;
-        bar.style.cssText =
-            'position:fixed;bottom:118px;left:50%;transform:translateX(-50%);display:flex;gap:12px;' +
-            'padding:6px 12px;background:rgba(20,24,32,.92);color:#dfe6ee;' +
-            'border:1px solid rgba(255,255,255,.14);border-radius:8px;font-size:12px;z-index:900;';
-        bar.querySelectorAll('select[data-endpoint]').forEach(sel => {
-            sel.value = this._wireEndStyle[sel.dataset.endpoint];
-            sel.addEventListener('change', () => {
-                this._wireEndStyle[sel.dataset.endpoint] = sel.value;
-            });
-        });
-        const routeSel = bar.querySelector('select[data-route]');
-        if (routeSel) {
-            routeSel.value = this._wireRouteStyle || 'manhattan';
-            routeSel.addEventListener('change', () => {
-                this._wireRouteStyle = routeSel.value;
-                // Smooth Trace forces `direct` and would silently override the
-                // pick; say so instead of letting the picker look broken.
-                if (this._smoothTrace) {
-                    this.showToast('Smooth Trace is ON — turn it off to use this route style', 'warning');
-                    return;
-                }
-                // Restyle the in-flight preview so the choice is visible now.
-                if (this._drawPreview && this._drawState?.points) {
-                    this._drawPreview.setAttribute('d',
-                        this._wirePathFromPoints(this._drawState.points));
-                }
-            });
-        }
-        document.body.appendChild(bar);
+        // Wire controls now live in the shared contextual command rail. Keeping
+        // this hook means older callers do not need to know where the UI moved.
+        this._refreshContextualToolbar?.();
     },
 
     // A tool is a one-shot action, not a mode: after it draws something it hands
@@ -174,6 +127,7 @@ Object.assign(MobileSVGEditor.prototype, {
 
         // Wire endpoint style bar only shows while the wire tool is active
         this._toggleWireStyleBar?.(tool === 'wire');
+        this._refreshContextualToolbar?.();
 
         // Quick usage hint per tool (Excalidraw-style)
         const hints = {
@@ -577,24 +531,117 @@ Object.assign(MobileSVGEditor.prototype, {
         el.setAttribute('font-family', 'Inter, sans-serif');
         el.setAttribute('font-size', '14');
         el.setAttribute('fill', this._drawStyle.stroke);
+        el.setAttribute('data-text-width', '240');
+        el.setAttribute('data-text-value', '');
         el.textContent = 'Text';
         el.id = `el_${Date.now()}_${Math.floor(Math.random() * 9999)}`;
         this._contentRoot.appendChild(el);
 
-        this.pushHistory('Text', before, this._captureFullState());
         this.selectEl(el);
         this._refreshPropertyPanel();
-        // Immediately open edit in property panel
-        setTimeout(() => this._startInlineTextEdit(el), 50);
+        // Excalidraw-style: type on the canvas, with the SVG text updating and
+        // wrapping live. The property panel remains the durable inspector.
+        setTimeout(() => this._startInlineTextEdit(el, { before, created: true, selectAll: true }), 0);
         this._revertToSelectTool();
     },
 
-    _startInlineTextEdit(textEl) {
-        // Focus text content input in property panel
-        const $input = $('#prop-text-content');
-        if ($input.length) {
-            $input.val(textEl.textContent).trigger('focus').trigger('select');
-        }
+    _textValue(textEl) {
+        if (textEl.hasAttribute('data-text-value')) return textEl.getAttribute('data-text-value') || '';
+        const spans = [...textEl.querySelectorAll(':scope > tspan')];
+        return spans.length ? spans.map(s => s.textContent).join('\n') : textEl.textContent;
+    },
+
+    _wrapTextLines(value, fontSize, width) {
+        const paragraphs = String(value).split('\n');
+        const lines = [];
+        paragraphs.forEach(paragraph => {
+            if (!paragraph) { lines.push(''); return; }
+            if (window.Boxwood?.defaultMeasure) {
+                const measured = window.Boxwood.defaultMeasure(paragraph, { fontSize }, width);
+                lines.push(...(measured.lines || [paragraph]));
+                return;
+            }
+            // Same deterministic approximation as Boxwood's browser-free
+            // measure function, retained for standalone/forked builds.
+            const chars = Math.max(1, Math.floor(width / (fontSize * 0.58)));
+            let current = '';
+            paragraph.split(/\s+/).forEach(word => {
+                const next = current ? `${current} ${word}` : word;
+                if (next.length <= chars || !current) current = next;
+                else { lines.push(current); current = word; }
+            });
+            if (current) lines.push(current);
+        });
+        return lines.length ? lines : [''];
+    },
+
+    _renderWrappedText(textEl, value, width) {
+        const fontSize = parseFloat(textEl.getAttribute('font-size') || '14');
+        const x = textEl.getAttribute('x') || '0';
+        const lines = this._wrapTextLines(value, fontSize, width);
+        textEl.replaceChildren();
+        lines.forEach((line, i) => {
+            const span = document.createElementNS(this.SVG_NS, 'tspan');
+            span.setAttribute('x', x);
+            span.setAttribute('dy', i === 0 ? '0' : '1.2em');
+            span.textContent = line || ' ';
+            textEl.appendChild(span);
+        });
+        textEl.setAttribute('data-text-value', value);
+        textEl.setAttribute('data-text-width', String(width));
+    },
+
+    _startInlineTextEdit(textEl, opts = {}) {
+        if (!textEl || textEl.dataset.locked === 'true') return;
+        document.querySelector('.gx-canvas-text-editor')?.blur();
+        const value = this._textValue(textEl);
+        const fontSize = parseFloat(textEl.getAttribute('font-size') || '14');
+        const width = parseFloat(textEl.getAttribute('data-text-width') || '240');
+        const p = textEl.ownerSVGElement.createSVGPoint();
+        p.x = parseFloat(textEl.getAttribute('x') || '0');
+        p.y = parseFloat(textEl.getAttribute('y') || '0') - fontSize;
+        const screen = p.matrixTransform(textEl.getScreenCTM());
+        const scale = Math.max(.25, this.camera?.zoom || 1);
+        const editor = document.createElement('textarea');
+        editor.className = 'gx-canvas-text-editor';
+        editor.value = value;
+        editor.setAttribute('aria-label', 'Edit text');
+        Object.assign(editor.style, {
+            left: `${screen.x}px`, top: `${screen.y}px`, width: `${Math.max(120, width * scale)}px`,
+            minHeight: `${fontSize * 1.8 * scale}px`, fontSize: `${fontSize * scale}px`,
+            fontFamily: textEl.getAttribute('font-family') || 'Inter, sans-serif',
+            color: textEl.getAttribute('fill') || this._drawStyle.stroke
+        });
+        document.body.appendChild(editor);
+        this._textEditActive = true;
+        textEl.classList.add('gx-text-editing');
+
+        const update = () => {
+            this._renderWrappedText(textEl, editor.value, width);
+            editor.style.height = '0px';
+            editor.style.height = `${Math.max(fontSize * 1.8 * scale, editor.scrollHeight)}px`;
+            this._renderHandles?.();
+        };
+        const finish = (commit = true) => {
+            if (!editor.isConnected) return;
+            if (!commit && !opts.created) this._renderWrappedText(textEl, value, width);
+            const empty = !editor.value.trim();
+            editor.remove();
+            textEl.classList.remove('gx-text-editing');
+            this._textEditActive = false;
+            if ((empty || !commit) && opts.created) textEl.remove();
+            if (commit) this.pushHistory('Edit text', opts.before || this._captureFullState(), this._captureFullState());
+            this._refreshPropertyPanel?.();
+        };
+        editor.addEventListener('input', update);
+        editor.addEventListener('blur', () => finish(true), { once: true });
+        editor.addEventListener('keydown', e => {
+            if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); finish(true); }
+        });
+        update();
+        editor.focus();
+        if (opts.selectAll) editor.select();
     },
 
     // ── WIRE (click-to-commit, Manhattan routing, snap-to-port) ──
@@ -670,6 +717,7 @@ Object.assign(MobileSVGEditor.prototype, {
         // has to be redrawn in the style it was authored in — recomputing it
         // from the current picker would silently restyle old wires.
         el.setAttribute('data-route-style', this._activeRouteStyle());
+        el.setAttribute('data-route-points', JSON.stringify(points));
         this._applyWireEndMarkers(el);
 
         // Store pin-connection metadata so wires can follow symbols when dragged
