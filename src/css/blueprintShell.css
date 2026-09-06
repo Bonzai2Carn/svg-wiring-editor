@@ -1,0 +1,758 @@
+/* ============================================================
+   Blueprint shell
+   A compact drafting-instrument UI around the existing editor.
+   This file is intentionally last in the cascade: it changes
+   presentation only and preserves every existing control/ID.
+   ============================================================ */
+
+:root {
+    color-scheme: light;
+    --bp-void: #e8eef1;
+    --bp-shell: #f7fafb;
+    --bp-panel: #ffffff;
+    --bp-panel-2: #edf3f5;
+    --bp-line: rgba(42, 78, 91, .13);
+    --bp-line-strong: rgba(42, 78, 91, .25);
+    --bp-ink: #18313b;
+    --bp-muted: #607b86;
+    --bp-cyan: #0f8da2;
+    --bp-cyan-strong: #08788c;
+    --bp-accent-ink: #ffffff;
+    --bp-amber: #a66b12;
+    --bp-danger: #c3474e;
+    --bp-appbar-start: #ffffff;
+    --bp-appbar-end: #edf3f5;
+    --bp-mode-bg: #e4ecef;
+    --bp-button-text: #405e69;
+    --bp-slide-bg: #e7eef1;
+    --bp-toolbar-muted: #6b848d;
+    --bp-canvas: #e4eaed;
+    --bp-grid-major: rgba(48, 99, 115, .15);
+    --bp-grid-minor: rgba(48, 99, 115, .065);
+    --bp-grid-glow: rgba(65, 146, 166, .07);
+    --bp-model-label: rgba(8, 120, 140, .72);
+    --bp-drawer: rgba(248, 251, 252, .985);
+    --bp-item: #ffffff;
+    --bp-item-hover: #e8f3f5;
+    --bp-item-label: #526f79;
+    --bp-group-bg: #f4f8f9;
+    --bp-input-bg: #ffffff;
+    --bp-dock: rgba(248, 251, 252, .95);
+    --bp-scrollbar: #a9bdc4;
+    --bp-shadow: rgba(28, 55, 64, .16);
+    --bp-radius: 3px;
+    --bp-font: "Inter", "Arial Narrow", system-ui, sans-serif;
+    --bp-mono: "SFMono-Regular", "Cascadia Mono", "Roboto Mono", monospace;
+}
+
+body.dark-mode {
+    color-scheme: dark;
+    --bp-void: #07121c;
+    --bp-shell: #0c1b28;
+    --bp-panel: #102331;
+    --bp-panel-2: #142b3a;
+    --bp-line: rgba(151, 209, 224, .14);
+    --bp-line-strong: rgba(151, 209, 224, .28);
+    --bp-ink: #d9edf1;
+    --bp-muted: #7896a2;
+    --bp-cyan: #8ce7f2;
+    --bp-cyan-strong: #4fc5d8;
+    --bp-accent-ink: #07121c;
+    --bp-amber: #e3b66f;
+    --bp-danger: #ef7e83;
+    --bp-appbar-start: #102433;
+    --bp-appbar-end: #0c1b28;
+    --bp-mode-bg: #091721;
+    --bp-button-text: #9eb4bd;
+    --bp-slide-bg: #0a1823;
+    --bp-toolbar-muted: #58747f;
+    --bp-canvas: #0a1a26;
+    --bp-grid-major: rgba(112, 180, 198, .105);
+    --bp-grid-minor: rgba(112, 180, 198, .04);
+    --bp-grid-glow: rgba(38, 100, 119, .13);
+    --bp-model-label: rgba(140, 231, 242, .54);
+    --bp-drawer: rgba(10, 25, 36, .985);
+    --bp-item: #0d202d;
+    --bp-item-hover: #143143;
+    --bp-item-label: #93acb6;
+    --bp-group-bg: #0b1c28;
+    --bp-input-bg: #081720;
+    --bp-dock: rgba(11, 28, 40, .94);
+    --bp-scrollbar: #294758;
+    --bp-shadow: rgba(0, 0, 0, .28);
+}
+
+body,
+body.dark-mode {
+    background: var(--bp-void);
+    color: var(--bp-ink);
+    font-family: var(--bp-font);
+}
+
+.app-container {
+    background: var(--bp-void);
+    isolation: isolate;
+}
+
+/* ── Application identity ─────────────────────────────────── */
+.blueprint-appbar {
+    height: 42px;
+    min-height: 42px;
+    display: grid;
+    grid-template-columns: minmax(250px, 1fr) auto minmax(250px, 1fr);
+    align-items: center;
+    padding: 0 12px;
+    background: linear-gradient(180deg, var(--bp-appbar-start) 0%, var(--bp-appbar-end) 100%);
+    border-bottom: 1px solid var(--bp-line-strong);
+    box-shadow: 0 1px 0 var(--bp-shadow);
+    z-index: 1100;
+    font-size: 11px;
+    letter-spacing: .01em;
+}
+
+.blueprint-brand {
+    display: inline-flex;
+    align-items: center;
+    width: max-content;
+    gap: 8px;
+    color: var(--bp-ink);
+    text-decoration: none;
+}
+
+.blueprint-brand-mark {
+    width: 24px;
+    height: 24px;
+    display: grid;
+    place-items: center;
+    color: var(--bp-accent-ink);
+    background: var(--bp-cyan);
+    clip-path: polygon(50% 0, 91% 24%, 91% 74%, 50% 100%, 9% 74%, 9% 24%);
+    font-size: 15px;
+}
+
+.blueprint-brand-name {
+    font-weight: 750;
+    font-size: 13px;
+    letter-spacing: .055em;
+}
+
+.blueprint-product-name {
+    color: var(--bp-muted);
+    padding-left: 8px;
+    border-left: 1px solid var(--bp-line-strong);
+}
+
+.blueprint-document {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    min-width: 0;
+}
+
+.blueprint-document-state {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--bp-amber);
+    box-shadow: 0 0 0 3px rgba(227, 182, 111, .1);
+}
+
+.blueprint-document-name {
+    color: var(--bp-ink);
+    font-weight: 550;
+}
+
+.blueprint-document-meta {
+    color: var(--bp-muted);
+    font: 9px/1 var(--bp-mono);
+    text-transform: uppercase;
+    letter-spacing: .08em;
+}
+
+.blueprint-app-actions {
+    justify-self: end;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    color: var(--bp-muted);
+}
+
+.blueprint-coordinate-readout {
+    color: var(--bp-cyan);
+    font: 9px/1 var(--bp-mono);
+    letter-spacing: .06em;
+}
+
+.blueprint-sync-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+/* ── Command strips ───────────────────────────────────────── */
+.custom-bar,
+body.dark-mode .custom-bar {
+    min-height: 39px;
+    background: var(--bp-shell);
+    border-bottom: 1px solid var(--bp-line);
+    box-shadow: none;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+.custom-bar.header-right {
+    min-height: 41px;
+}
+
+.custom-bar > .header-right {
+    justify-content: space-between;
+    padding: 4px 10px !important;
+}
+
+.custom-bar .control-group-flex,
+body.dark-mode .custom-bar .control-group-flex {
+    min-height: 30px;
+    margin: 3px;
+    padding: 2px;
+    gap: 1px;
+    background: transparent;
+    border: 0;
+    border-radius: var(--bp-radius);
+}
+
+.custom-bar.header-right .control-group-flex {
+    width: auto !important;
+    max-width: 48%;
+}
+
+.mode-switcher,
+body.dark-mode .mode-switcher {
+    height: 30px;
+    gap: 1px;
+    padding: 2px;
+    background: var(--bp-mode-bg);
+    border: 1px solid var(--bp-line);
+    border-radius: var(--bp-radius);
+}
+
+.mode-pill,
+body.dark-mode .mode-pill {
+    height: 24px;
+    padding: 0 10px;
+    border-radius: 2px;
+    color: var(--bp-muted);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .035em;
+    text-transform: uppercase;
+}
+
+.mode-pill:hover,
+body.dark-mode .mode-pill:hover {
+    color: var(--bp-ink);
+    background: color-mix(in srgb, var(--bp-cyan) 9%, transparent);
+}
+
+.mode-pill.active,
+body.dark-mode .mode-pill.active {
+    color: var(--bp-accent-ink);
+    background: var(--bp-cyan);
+    box-shadow: none;
+}
+
+.btn,
+body.dark-mode .btn {
+    min-width: 32px;
+    min-height: 30px;
+    padding: 5px 8px;
+    margin-right: 1px;
+    gap: 5px;
+    border: 1px solid transparent;
+    border-radius: var(--bp-radius);
+    background: transparent;
+    color: var(--bp-button-text);
+    font-size: 12px;
+    box-shadow: none;
+    backdrop-filter: none;
+    transition: color .12s ease, background .12s ease, border-color .12s ease;
+}
+
+.btn:hover,
+body.dark-mode .btn:hover {
+    color: var(--bp-ink);
+    background: color-mix(in srgb, var(--bp-cyan) 9%, transparent);
+    border-color: var(--bp-line-strong);
+    transform: none;
+}
+
+.btn.active,
+body.dark-mode .btn.active,
+.draw-tool-btn.active,
+body.dark-mode .draw-tool-btn.active {
+    color: var(--bp-cyan) !important;
+    background: color-mix(in srgb, var(--bp-cyan) 15%, transparent) !important;
+    border-color: color-mix(in srgb, var(--bp-cyan) 48%, transparent) !important;
+    box-shadow: inset 0 -2px 0 var(--bp-cyan-strong) !important;
+}
+
+.btn:focus-visible,
+.mode-pill:focus-visible,
+.control-btn:focus-visible,
+.palette-item:focus-visible {
+    outline: 2px solid var(--bp-amber);
+    outline-offset: 1px;
+}
+
+.custom-bar .accordion.slide-bar,
+body.dark-mode .custom-bar .accordion.slide-bar {
+    min-width: 58px;
+    padding: 0 8px;
+    background: var(--bp-slide-bg) !important;
+    border: 0;
+    border-right: 1px solid var(--bp-line);
+    color: var(--bp-muted);
+}
+
+.custom-bar .accordion.slide-bar h3,
+body.dark-mode .custom-bar .accordion.slide-bar h3 {
+    margin: 0;
+    color: inherit;
+    font: 700 10px/1 var(--bp-mono);
+    letter-spacing: .12em;
+}
+
+.custom-bar .accordion.active.slide-bar {
+    color: var(--bp-cyan);
+    box-shadow: inset 2px 0 0 var(--bp-cyan-strong);
+}
+
+.toolbar-sep {
+    color: var(--bp-toolbar-muted);
+    font: 700 10px/1 var(--bp-mono);
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    margin: 0 5px 0 9px;
+}
+
+/* The lower strip is an instrument rack. Existing title attributes carry the
+   full action names; keeping the old visible labels makes the rack collide at
+   ordinary laptop widths. Inputs retain their visible values. */
+.custom-bar:not(.header-right) .btn .panel-content {
+    display: none;
+}
+
+.custom-bar:not(.header-right) .btn {
+    width: 32px;
+    min-width: 32px;
+    padding-inline: 6px;
+    justify-content: center;
+}
+
+.custom-bar:not(.header-right) .btn iconify-icon {
+    font-size: 16px;
+}
+
+.custom-bar:not(.header-right) #measureCalibrateBtn,
+.custom-bar:not(.header-right) .export-domain-btn {
+    width: auto;
+}
+
+.custom-bar:not(.header-right) .prop-label {
+    gap: 3px !important;
+}
+
+.prop-label,
+body.dark-mode .prop-label,
+.switch-content,
+body.dark-mode .switch-content {
+    color: var(--bp-muted);
+    font-size: 12px;
+}
+
+/* ── Drafting surface ─────────────────────────────────────── */
+.main-layout {
+    position: relative;
+    border-top: 1px solid var(--bp-line-strong);
+}
+
+.svg-viewer,
+body.dark-mode .svg-viewer {
+    background-color: var(--bp-canvas);
+    background-image:
+        linear-gradient(var(--bp-grid-major) 1px, transparent 1px),
+        linear-gradient(90deg, var(--bp-grid-major) 1px, transparent 1px),
+        linear-gradient(var(--bp-grid-minor) 1px, transparent 1px),
+        linear-gradient(90deg, var(--bp-grid-minor) 1px, transparent 1px),
+        radial-gradient(circle at 50% 45%, var(--bp-grid-glow), transparent 62%);
+    background-size: 100px 100px, 100px 100px, 20px 20px, 20px 20px, 100% 100%;
+    background-position: -1px -1px, -1px -1px, -1px -1px, -1px -1px, 0 0;
+}
+
+.svg-viewer::before {
+    content: "MODEL SPACE  /  1:1";
+    position: absolute;
+    top: 12px;
+    left: 14px;
+    z-index: 20;
+    color: var(--bp-model-label);
+    font: 8px/1 var(--bp-mono);
+    letter-spacing: .11em;
+    pointer-events: none;
+}
+
+.svg-viewer::after {
+    content: "XY";
+    position: absolute;
+    left: 14px;
+    bottom: 14px;
+    width: 30px;
+    height: 30px;
+    display: grid;
+    place-items: end start;
+    padding: 0 0 2px 4px;
+    color: var(--bp-cyan);
+    border-left: 1px solid var(--bp-cyan-strong);
+    border-bottom: 1px solid var(--bp-cyan-strong);
+    font: 7px/1 var(--bp-mono);
+    opacity: .7;
+    pointer-events: none;
+}
+
+#snap-grid-minor {
+    stroke: var(--bp-grid-minor) !important;
+}
+
+#snap-grid-major {
+    stroke: var(--bp-grid-major) !important;
+}
+
+/* ── Left symbol library ──────────────────────────────────── */
+#symbolPalettePanel,
+body:not(.dark-mode) #symbolPalettePanel {
+    top: 42px;
+    bottom: 0;
+    width: 214px;
+    background: var(--bp-drawer);
+    border-right: 1px solid var(--bp-line-strong);
+    backdrop-filter: blur(12px);
+    box-shadow: 12px 0 35px var(--bp-shadow);
+}
+
+#symbolPalettePanel.open + #paletteToggleBtn,
+#paletteToggleBtn.shifted {
+    left: 214px;
+}
+
+.palette-header {
+    min-height: 42px;
+    padding: 0 10px;
+    background: var(--bp-panel);
+    border-bottom: 1px solid var(--bp-line);
+}
+
+.palette-header h4 {
+    color: var(--bp-ink);
+    font: 700 12px/1 var(--bp-mono);
+    letter-spacing: .1em;
+    text-transform: uppercase;
+}
+
+.palette-close-btn {
+    color: var(--bp-muted);
+}
+
+#symbolPalette {
+    padding: 7px;
+}
+
+.palette-group-label,
+body:not(.dark-mode) .palette-group-label {
+    color: var(--bp-muted);
+    padding: 11px 5px 5px;
+    font: 700 11px/1 var(--bp-mono);
+    letter-spacing: .13em;
+    border-bottom: 1px solid var(--bp-line);
+    margin-bottom: 6px;
+}
+
+.palette-row {
+    gap: 5px;
+}
+
+.palette-item,
+body:not(.dark-mode) .palette-item {
+    width: 96px;
+    padding: 7px 5px 5px;
+    border-radius: var(--bp-radius);
+    border: 1px solid var(--bp-line);
+    background: var(--bp-item);
+}
+
+.palette-item:hover,
+body:not(.dark-mode) .palette-item:hover {
+    background: var(--bp-item-hover);
+    border-color: color-mix(in srgb, var(--bp-cyan) 46%, transparent);
+    transform: none;
+}
+
+.palette-icon svg {
+    filter: saturate(.72) brightness(1.32);
+}
+
+.palette-label,
+body:not(.dark-mode) .palette-label {
+    color: var(--bp-item-label);
+    font: 11px/1.25 var(--bp-mono);
+}
+
+#paletteToggleBtn {
+    top: 50%;
+    padding: 11px 6px;
+    color: var(--bp-cyan);
+    background: var(--bp-panel);
+    border-color: var(--bp-line-strong);
+    border-radius: 0 var(--bp-radius) var(--bp-radius) 0;
+    box-shadow: 4px 0 14px var(--bp-shadow);
+}
+
+/* ── Right inspector ──────────────────────────────────────── */
+.side-panel,
+body.dark-mode .side-panel {
+    top: 42px;
+    height: calc(100vh - 42px);
+    width: 286px;
+    right: -286px;
+    color: var(--bp-ink);
+    background: var(--bp-drawer);
+    border-left: 1px solid var(--bp-line-strong);
+    box-shadow: -16px 0 38px var(--bp-shadow);
+    backdrop-filter: blur(14px);
+}
+
+.side-panel.open,
+body.dark-mode .side-panel.open {
+    right: 0;
+}
+
+.side-panel-close,
+body.dark-mode .side-panel-close {
+    top: 9px;
+    right: 9px;
+    width: 24px;
+    height: 24px;
+    border-radius: var(--bp-radius);
+    background: transparent;
+    color: var(--bp-muted);
+}
+
+.side-panel-tabs,
+body.dark-mode .side-panel-tabs {
+    margin-top: 42px !important;
+    padding: 0 8px;
+    gap: 2px;
+    border-bottom: 1px solid var(--bp-line);
+}
+
+.side-tab,
+body.dark-mode .side-tab {
+    padding: 8px 10px;
+    border-radius: var(--bp-radius) var(--bp-radius) 0 0;
+    color: var(--bp-muted);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+}
+
+.side-tab.active,
+body.dark-mode .side-tab.active {
+    color: var(--bp-cyan);
+    background: color-mix(in srgb, var(--bp-cyan) 8%, transparent);
+    border-bottom-color: var(--bp-cyan);
+}
+
+.control-group,
+body.dark-mode .control-group {
+    margin: 8px;
+    padding: 9px;
+    border-radius: var(--bp-radius);
+    background: var(--bp-group-bg);
+    border: 1px solid var(--bp-line);
+}
+
+.control-group h3,
+body.dark-mode .control-group h3,
+.prop-section-title,
+body.dark-mode .prop-section-title {
+    color: var(--bp-muted);
+    font: 700 12px/1 var(--bp-mono);
+    text-transform: uppercase;
+    letter-spacing: .11em;
+}
+
+.layers-tree {
+    font: 12px/1.45 var(--bp-mono);
+}
+
+#layersPanel {
+    border-color: var(--bp-line) !important;
+    border-radius: var(--bp-radius) !important;
+}
+
+.prop-input,
+.prop-select,
+.prop-textarea,
+body.dark-mode .prop-input,
+body.dark-mode .prop-select,
+body.dark-mode .prop-textarea {
+    border-radius: var(--bp-radius);
+    background: var(--bp-input-bg);
+    border-color: var(--bp-line-strong);
+    color: var(--bp-ink);
+    font-family: var(--bp-mono);
+}
+
+/* ── Bottom instrument dock ───────────────────────────────── */
+.bottom-controls,
+body.dark-mode .bottom-controls {
+    left: 50%;
+    right: auto;
+    bottom: 9px;
+    width: auto;
+    max-width: calc(100vw - 48px);
+    transform: translateX(-50%);
+    padding: 3px;
+    gap: 1px;
+    border: 1px solid var(--bp-line-strong);
+    border-radius: var(--bp-radius);
+    background: var(--bp-dock);
+    box-shadow: 0 8px 28px var(--bp-shadow);
+    backdrop-filter: blur(12px);
+}
+
+.control-btn,
+body.dark-mode .control-btn {
+    min-width: 30px;
+    min-height: 30px;
+    padding: 4px 6px;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    color: var(--bp-muted);
+}
+
+.control-btn:hover,
+body.dark-mode .control-btn:hover,
+.control-btn.active,
+body.dark-mode .control-btn.active {
+    color: var(--bp-cyan);
+    background: color-mix(in srgb, var(--bp-cyan) 10%, transparent);
+    border-color: var(--bp-line-strong);
+}
+
+.control-btn .icon,
+.control-btn .icon iconify-icon {
+    font-size: 16px !important;
+}
+
+.timeline-panel,
+body.dark-mode .timeline-panel {
+    background: var(--bp-shell);
+    border-top-color: var(--bp-line);
+}
+
+/* Scrollbars are part of the instrument UI, not browser chrome. */
+#symbolPalette::-webkit-scrollbar,
+.side-panel::-webkit-scrollbar,
+.custom-bar *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+#symbolPalette::-webkit-scrollbar-thumb,
+.side-panel::-webkit-scrollbar-thumb,
+.custom-bar *::-webkit-scrollbar-thumb {
+    background: var(--bp-scrollbar);
+    border-radius: 0;
+}
+
+@media (max-width: 900px) {
+    .blueprint-appbar {
+        grid-template-columns: 1fr auto;
+    }
+
+    .blueprint-document {
+        display: none;
+    }
+
+    .blueprint-coordinate-readout,
+    .custom-bar.header-right .panel-content {
+        display: none;
+    }
+
+    .custom-bar.header-right .control-group-flex {
+        max-width: 42%;
+    }
+}
+
+@media (max-width: 640px) {
+    .blueprint-appbar {
+        height: 38px;
+        min-height: 38px;
+        padding: 0 8px;
+    }
+
+    .blueprint-product-name,
+    .blueprint-sync-state {
+        display: none;
+    }
+
+    .custom-bar.header-right {
+        min-height: 38px;
+    }
+
+    .custom-bar > .header-right {
+        padding: 3px 6px !important;
+    }
+
+    .custom-bar.header-right .control-group-flex {
+        max-width: 58%;
+    }
+
+    #symbolPalettePanel {
+        top: 38px;
+        width: min(78vw, 260px);
+    }
+
+    #paletteToggleBtn.shifted {
+        left: min(78vw, 260px);
+    }
+
+    .side-panel,
+    body.dark-mode .side-panel {
+        top: 38px;
+        width: min(86vw, 320px);
+        right: min(-86vw, -320px);
+        height: calc(100vh - 38px);
+    }
+
+    .side-panel.open,
+    body.dark-mode .side-panel.open {
+        right: 0;
+    }
+
+    .bottom-controls,
+    body.dark-mode .bottom-controls {
+        max-width: calc(100vw - 16px);
+        overflow-x: auto;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #symbolPalettePanel,
+    #paletteToggleBtn,
+    .side-panel,
+    .btn,
+    .control-btn {
+        transition: none !important;
+    }
+}

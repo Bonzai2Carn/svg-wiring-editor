@@ -92,6 +92,47 @@
     <script src="/assets/os/contracts.js"></script>
     <script src="/assets/os/mcp.js"></script>
     <script src="/assets/os/bridge.js"></script>
+    <!-- GxPointer bootstrap. Every tool wires its buttons with
+         GxPointer.onPress(...) and does not guard the call, so if
+         /assets/os/pointer.js 404s or arrives late (file:// open, a tool served
+         from its own directory, a webview whose asset root differs) the first
+         onPress throws inside a synchronous init and aborts every button wired
+         after it — the toolbar goes dead with no error naming the button.
+         This inline shim guarantees window.GxPointer exists with identical
+         onPress/onCanvasDrag semantics; pointer.js upgrades it in place. -->
+    <script>
+    (function () {
+        if (window.GxPointer) return;
+        function primary(e) { return e.button === 0 && e.isPrimary !== false; }
+        function onPress(el, fn) {
+            if (!el) return;
+            el.addEventListener('pointerdown', function (e) { if (primary(e)) fn(e); });
+            el.addEventListener('click', function (e) { if (e.detail === 0) fn(e); });
+        }
+        function onCanvasDrag(el, h) {
+            if (!el) return;
+            var active = false;
+            el.addEventListener('pointerdown', function (e) {
+                if (!primary(e)) return;
+                active = true;
+                try { el.setPointerCapture(e.pointerId); } catch (err) {}
+                if (h && h.onDown) h.onDown(e);
+            });
+            el.addEventListener('pointermove', function (e) {
+                if (active && e.isPrimary !== false && h && h.onMove) h.onMove(e);
+            });
+            function end(e) {
+                if (!active) return;
+                active = false;
+                try { el.releasePointerCapture(e.pointerId); } catch (err) {}
+                if (h && h.onUp) h.onUp(e);
+            }
+            el.addEventListener('pointerup', end);
+            el.addEventListener('pointercancel', end);
+        }
+        window.GxPointer = { onPress: onPress, onCanvasDrag: onCanvasDrag, __gxShim: true };
+    })();
+    </script>
     <script src="/assets/os/pointer.js"></script>
     <!-- "Open in Ginexys" on a published artifact page lands here with
          ?artifact=<id>[&region=<r>]. Loads the content from the public API —
@@ -120,6 +161,7 @@
     <link rel="stylesheet" href="src/css/svgEditorUI.css" />
     <link rel="stylesheet" href="src/css/wiringDiagram.css" />
     <link rel="stylesheet" href="src/css/domainKits.css" />
+    <link rel="stylesheet" href="src/css/blueprintShell.css" />
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -179,6 +221,27 @@
 
   <body class="dark-mode">
     <div class="app-container">
+      <header class="blueprint-appbar" aria-label="Schema Editor workspace">
+        <a class="blueprint-brand" href="/" aria-label="Ginexys home">
+          <span class="blueprint-brand-mark" aria-hidden="true">
+            <iconify-icon icon="material-symbols:deployed-code-outline"></iconify-icon>
+          </span>
+          <!-- <span class="blueprint-brand-name">GINEXYS</span> -->
+          <span class="blueprint-product-name">Schema Editor</span>
+        </a>
+        <div class="blueprint-document" aria-label="Current document">
+          <span class="blueprint-document-state" aria-hidden="true"></span>
+          <span class="blueprint-document-name">Untitled diagram</span>
+          <span class="blueprint-document-meta">Local workspace</span>
+        </div>
+        <div class="blueprint-app-actions" aria-label="Workspace status">
+          <span class="blueprint-coordinate-readout">X&nbsp;0000&nbsp;&nbsp;Y&nbsp;0000</span>
+          <span class="blueprint-sync-state">
+            <iconify-icon icon="material-symbols:cloud-done-outline"></iconify-icon>
+            Saved locally
+          </span>
+        </div>
+      </header>
       <!-- ======================================================
          HEADER
          ====================================================== -->

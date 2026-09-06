@@ -276,7 +276,7 @@ class MobileSVGEditor {
         $('#exportNetlistBtn').on('click', () => this.exportNetlist());
         $('#batchExportBtn').on('click',  () => this.batchExport());
         $('#toggleMiniMapBtn').on('click',() => this.toggleMiniMap());
-        $('#darkModeBtn').on('click',     () => this.toggleDarkMode());
+        $('#darkModeBtn').on('click',     () => this.toggleTheme());
 
         // Side panel
         $('#closePanelBtn').on('click', () => this.closeSidePanel());

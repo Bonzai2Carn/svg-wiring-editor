@@ -222,13 +222,12 @@ Object.assign(MobileSVGEditor.prototype, {
 
         this._propPanelTarget = el;
 
-        // Auto-switch to Properties tab so the panel is actually visible.
-        // Without this, the Properties panel is rendered below the Layers panel
-        // and the user never sees it change.
-        if (this.$sidePanel?.hasClass('open') && this._activeSidePanelTab !== 'properties') {
-            this._switchSidePanelTab('properties');
-        } else {
+        // Refresh without stealing the active tab. Layer clicks select elements
+        // too; switching here made every Layers action jump to Properties.
+        if (this._activeSidePanelTab === 'properties') {
             $('#propertyPanel').show();
+        } else {
+            $('#propertyPanel').hide();
         }
 
         // Multi-select banner — visible when 2+ elements are selected

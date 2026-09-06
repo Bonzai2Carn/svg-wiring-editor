@@ -69,14 +69,19 @@ Object.assign(MobileSVGEditor.prototype, {
         });
     },
 
-    // ── Dark Mode ────────────────────────────────────────────
+    // ── Theme ────────────────────────────────────────────────
 
-    toggleDarkMode() {
+    toggleTheme() {
         const isDark = $('body').toggleClass('dark-mode').hasClass('dark-mode');
         $('#darkModeBtn iconify-icon').attr('icon',
             isDark ? 'material-symbols:light-mode-outline' : 'material-symbols:dark-mode-outline'
         );
         this.showToast(isDark ? 'Dark mode' : 'Light mode', 'success');
+    },
+
+    // Compatibility for callers that used the old method name.
+    toggleDarkMode() {
+        return this.toggleTheme();
     },
 
     // ── Export ───────────────────────────────────────────────

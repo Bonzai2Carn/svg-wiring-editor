@@ -15,6 +15,14 @@ Object.assign(MobileSVGEditor.prototype, {
         if (ext === '.svg' || ext === '.svgz') {
             svgContent = content;
             sourceFormat = 'svg';
+        } else if (ext === '.plt' || ext === '.hpgl') {
+            try {
+                svgContent = this._hpglToSvg(content);
+                sourceFormat = ext.slice(1);
+            } catch (e) {
+                this.showToast('Could not parse file: ' + e.message, 'error');
+                return;
+            }
         } else if (ext === '.gschema' || ext === '.json') {
             try {
                 const payload = JSON.parse(content);
